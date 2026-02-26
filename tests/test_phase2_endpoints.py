@@ -50,6 +50,7 @@ def test_api_payments_create_list_and_manual_generation(tmp_path) -> None:
             )
             assert created.status_code == 201
             assert created.json()["name"] == "Internet"
+            internet_payment_id = created.json()["id"]
 
             created_weekly = client.post(
                 "/api/payments",
@@ -90,6 +91,9 @@ def test_api_payments_create_list_and_manual_generation(tmp_path) -> None:
             assert current_payload["cycle_start"] == "2026-01-02"
             assert current_payload["cycle_end"] == "2026-01-15"
             assert any(row["payment_name"] == "Internet" for row in current_payload["occurrences"])
+            internet_occurrence = next(
+                row for row in current_payload["occurrences"] if row["payment_name"] == "Internet"
+            )
 
             next_cycle = client.get("/api/cycles/next", params={"today": "2026-01-15"})
             assert next_cycle.status_code == 200
@@ -97,6 +101,47 @@ def test_api_payments_create_list_and_manual_generation(tmp_path) -> None:
             assert next_payload["cycle_start"] == "2026-01-16"
             assert next_payload["cycle_end"] == "2026-01-29"
             assert any(row["payment_name"] == "Gym" for row in next_payload["occurrences"])
+            gym_occurrence = next(row for row in next_payload["occurrences"] if row["payment_name"] == "Gym")
+
+            mark_paid = client.post(
+                f"/api/occurrences/{internet_occurrence['occurrence_id']}/mark-paid",
+                json={"today": "2026-01-15"},
+            )
+            assert mark_paid.status_code == 200
+            assert mark_paid.json()["status"] == "completed"
+            assert mark_paid.json()["amount_paid"] == "80.00"
+
+            edit_paid = client.post(
+                f"/api/occurrences/{internet_occurrence['occurrence_id']}/mark-paid",
+                json={"today": "2026-01-15", "amount_paid": "79.25", "paid_date": "2026-01-18"},
+            )
+            assert edit_paid.status_code == 200
+            assert edit_paid.json()["amount_paid"] == "79.25"
+            assert edit_paid.json()["paid_date"] == "2026-01-18"
+
+            undo_paid = client.post(f"/api/occurrences/{internet_occurrence['occurrence_id']}/undo-paid")
+            assert undo_paid.status_code == 200
+            assert undo_paid.json()["status"] == "scheduled"
+            assert undo_paid.json()["amount_paid"] is None
+
+            skip = client.post(f"/api/occurrences/{gym_occurrence['occurrence_id']}/skip")
+            assert skip.status_code == 200
+            assert skip.json()["status"] == "skipped"
+
+            paid_off = client.post(
+                f"/api/payments/{internet_payment_id}/paid-off",
+                json={"paid_off_date": "2026-01-15"},
+            )
+            assert paid_off.status_code == 200
+            assert paid_off.json()["payment_id"] == internet_payment_id
+            assert paid_off.json()["canceled_occurrences_count"] >= 1
+
+            cycle_with_future_internet_due = client.get("/api/cycles/next", params={"today": "2026-02-12"})
+            assert cycle_with_future_internet_due.status_code == 200
+            assert all(
+                row["payment_name"] != "Internet"
+                for row in cycle_with_future_internet_due.json()["occurrences"]
+            )
 
             guarded_first = client.post(
                 "/api/admin/run-generation-once-today",

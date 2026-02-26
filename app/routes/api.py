@@ -11,6 +11,13 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db_session
 from app.models.payments import Payment
+from app.services.actions_service import (
+    ActionValidationError,
+    mark_occurrence_paid,
+    mark_payment_paid_off,
+    skip_occurrence,
+    undo_mark_paid,
+)
 from app.services.cycle_views_service import get_cycle_snapshot
 from app.services.occurrence_generation import (
     generate_occurrences_ahead,
@@ -57,6 +64,16 @@ class ManualGenerationRequest(BaseModel):
     horizon_days: int = Field(default=90, ge=1, le=365)
 
 
+class MarkPaidRequest(BaseModel):
+    today: date | None = None
+    amount_paid: Decimal | None = Field(default=None, ge=0)
+    paid_date: date | None = None
+
+
+class PaidOffRequest(BaseModel):
+    paid_off_date: date | None = None
+
+
 def _serialize_cycle_snapshot(snapshot) -> dict[str, object]:
     return {
         "label": snapshot.label,
@@ -75,6 +92,18 @@ def _serialize_cycle_snapshot(snapshot) -> dict[str, object]:
             }
             for row in snapshot.occurrences
         ],
+    }
+
+
+def _serialize_occurrence_action_result(occurrence) -> dict[str, object]:
+    return {
+        "occurrence_id": occurrence.id,
+        "payment_id": occurrence.payment_id,
+        "status": occurrence.status,
+        "due_date": occurrence.due_date.isoformat(),
+        "expected_amount": str(occurrence.expected_amount),
+        "amount_paid": None if occurrence.amount_paid is None else str(occurrence.amount_paid),
+        "paid_date": None if occurrence.paid_date is None else occurrence.paid_date.isoformat(),
     }
 
 
@@ -200,3 +229,62 @@ def ensure_daily_generation_api(payload: ManualGenerationRequest, db: Session = 
             }
         )
     return response
+
+
+@api_router.post("/occurrences/{occurrence_id}/mark-paid")
+def mark_paid_api(
+    occurrence_id: int,
+    payload: MarkPaidRequest,
+    db: Session = Depends(get_db_session),
+) -> dict[str, object]:
+    try:
+        occurrence = mark_occurrence_paid(
+            db,
+            occurrence_id=occurrence_id,
+            today=payload.today or date.today(),
+            amount_paid=payload.amount_paid,
+            paid_date=payload.paid_date,
+        )
+    except ActionValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return _serialize_occurrence_action_result(occurrence)
+
+
+@api_router.post("/occurrences/{occurrence_id}/undo-paid")
+def undo_mark_paid_api(occurrence_id: int, db: Session = Depends(get_db_session)) -> dict[str, object]:
+    try:
+        occurrence = undo_mark_paid(db, occurrence_id=occurrence_id)
+    except ActionValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return _serialize_occurrence_action_result(occurrence)
+
+
+@api_router.post("/occurrences/{occurrence_id}/skip")
+def skip_occurrence_api(occurrence_id: int, db: Session = Depends(get_db_session)) -> dict[str, object]:
+    try:
+        occurrence = skip_occurrence(db, occurrence_id=occurrence_id)
+    except ActionValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return _serialize_occurrence_action_result(occurrence)
+
+
+@api_router.post("/payments/{payment_id}/paid-off")
+def paid_off_payment_api(
+    payment_id: int,
+    payload: PaidOffRequest,
+    db: Session = Depends(get_db_session),
+) -> dict[str, object]:
+    try:
+        result = mark_payment_paid_off(
+            db,
+            payment_id=payment_id,
+            paid_off_date=payload.paid_off_date or date.today(),
+        )
+    except ActionValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return {
+        "payment_id": result.payment_id,
+        "paid_off_date": result.paid_off_date.isoformat(),
+        "canceled_occurrences_count": result.canceled_occurrences_count,
+    }

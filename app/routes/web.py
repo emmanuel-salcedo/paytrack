@@ -10,6 +10,13 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db_session
 from app.models import AppSettings, PaySchedule
+from app.services.actions_service import (
+    ActionValidationError,
+    mark_occurrence_paid,
+    mark_payment_paid_off,
+    skip_occurrence,
+    undo_mark_paid,
+)
 from app.services.cycle_views_service import get_cycle_snapshot
 from app.services.occurrence_generation import (
     generate_occurrences_ahead,
@@ -22,43 +29,62 @@ templates = Jinja2Templates(directory=str(Path(__file__).resolve().parents[1] / 
 web_router = APIRouter(tags=["web"])
 
 
-@web_router.get("/")
-def home(request: Request, db: Session = Depends(get_db_session)):
-    # First-request-of-day fallback: safe to call on every request because job_runs guard de-dupes.
-    run_generate_occurrences_once_per_day_in_session_if_ready(db, today=date.today())
+def _build_dashboard_context(
+    db: Session,
+    *,
+    payment_error: str | None = None,
+    generation_state: dict[str, object] | None = None,
+    action_notice: str | None = None,
+    action_error: str | None = None,
+) -> dict[str, object]:
     schedule = db.query(PaySchedule).first()
     app_settings = db.query(AppSettings).first()
     payments = list_payments(db)
     current_cycle_snapshot = get_cycle_snapshot(db, today=date.today(), which="current")
     next_cycle_snapshot = get_cycle_snapshot(db, today=date.today(), which="next")
+    return {
+        "schedule": schedule,
+        "app_settings": app_settings,
+        "payments": payments,
+        "current_cycle_snapshot": current_cycle_snapshot,
+        "next_cycle_snapshot": next_cycle_snapshot,
+        "payment_error": payment_error,
+        "generation_state": generation_state,
+        "action_notice": action_notice,
+        "action_error": action_error,
+    }
+
+
+@web_router.get("/")
+def home(request: Request, db: Session = Depends(get_db_session)):
+    # First-request-of-day fallback: safe to call on every request because job_runs guard de-dupes.
+    run_generate_occurrences_once_per_day_in_session_if_ready(db, today=date.today())
     return templates.TemplateResponse(
         request,
         "index.html",
-        {
-            "schedule": schedule,
-            "app_settings": app_settings,
-            "payments": payments,
-            "current_cycle_snapshot": current_cycle_snapshot,
-            "next_cycle_snapshot": next_cycle_snapshot,
-            "payment_error": None,
-            "generation_state": None,
-        },
+        _build_dashboard_context(db),
     )
 
 
-def _render_payments_panel(
+def _render_interactive_panels(
     request: Request,
     db: Session,
     *,
     payment_error: str | None = None,
+    generation_state: dict[str, object] | None = None,
+    action_notice: str | None = None,
+    action_error: str | None = None,
 ):
     return templates.TemplateResponse(
         request,
-        "_payments_panel.html",
-        {
-            "payments": list_payments(db),
-            "payment_error": payment_error,
-        },
+        "_interactive_panels.html",
+        _build_dashboard_context(
+            db,
+            payment_error=payment_error,
+            generation_state=generation_state,
+            action_notice=action_notice,
+            action_error=action_error,
+        ),
     )
 
 
@@ -93,9 +119,9 @@ def create_payment_web(
                 recurrence_type=recurrence_type,
             ),
         )
-        return _render_payments_panel(request, db)
+        return _render_interactive_panels(request, db, action_notice="Payment added.")
     except (ValueError, InvalidOperation) as exc:
-        return _render_payments_panel(request, db, payment_error=str(exc))
+        return _render_interactive_panels(request, db, payment_error=str(exc), action_error="Payment create failed.")
 
 
 @web_router.post("/admin/run-generation")
@@ -108,8 +134,9 @@ def run_generation_web(
         horizon_days = 90
 
     result = generate_occurrences_ahead(db, today=date.today(), horizon_days=horizon_days)
-    return _render_generation_panel(
+    return _render_interactive_panels(
         request,
+        db,
         generation_state={
             "generated_count": result.generated_count,
             "skipped_existing_count": result.skipped_existing_count,
@@ -119,6 +146,7 @@ def run_generation_web(
             "mode": "manual",
             "ran": True,
         },
+        action_notice="Manual occurrence generation completed.",
     )
 
 
@@ -148,4 +176,79 @@ def run_generation_once_today_web(
                 "range_end": guarded.generation_result.range_end,
             }
         )
-    return _render_generation_panel(request, generation_state=generation_state)
+    return _render_interactive_panels(
+        request,
+        db,
+        generation_state=generation_state,
+        action_notice=(
+            "Guarded daily generation executed." if guarded.ran else "Guard blocked duplicate daily generation."
+        ),
+    )
+
+
+@web_router.post("/occurrences/{occurrence_id}/mark-paid")
+def mark_paid_web(
+    request: Request,
+    occurrence_id: int,
+    amount_paid: str = Form(""),
+    paid_date: str = Form(""),
+    db: Session = Depends(get_db_session),
+):
+    try:
+        parsed_amount = Decimal(amount_paid) if amount_paid.strip() else None
+        parsed_paid_date = date.fromisoformat(paid_date) if paid_date.strip() else None
+        mark_occurrence_paid(
+            db,
+            occurrence_id=occurrence_id,
+            today=date.today(),
+            amount_paid=parsed_amount,
+            paid_date=parsed_paid_date,
+        )
+        return _render_interactive_panels(request, db, action_notice="Occurrence marked paid.")
+    except (ActionValidationError, InvalidOperation, ValueError) as exc:
+        return _render_interactive_panels(request, db, action_error=str(exc))
+
+
+@web_router.post("/occurrences/{occurrence_id}/undo-paid")
+def undo_mark_paid_web(
+    request: Request,
+    occurrence_id: int,
+    db: Session = Depends(get_db_session),
+):
+    try:
+        undo_mark_paid(db, occurrence_id=occurrence_id)
+        return _render_interactive_panels(request, db, action_notice="Paid status undone.")
+    except ActionValidationError as exc:
+        return _render_interactive_panels(request, db, action_error=str(exc))
+
+
+@web_router.post("/occurrences/{occurrence_id}/skip")
+def skip_occurrence_web(
+    request: Request,
+    occurrence_id: int,
+    db: Session = Depends(get_db_session),
+):
+    try:
+        skip_occurrence(db, occurrence_id=occurrence_id)
+        return _render_interactive_panels(request, db, action_notice="Occurrence skipped for this cycle.")
+    except ActionValidationError as exc:
+        return _render_interactive_panels(request, db, action_error=str(exc))
+
+
+@web_router.post("/payments/{payment_id}/paid-off")
+def mark_paid_off_web(
+    request: Request,
+    payment_id: int,
+    paid_off_date: str = Form(""),
+    db: Session = Depends(get_db_session),
+):
+    try:
+        resolved_date = date.fromisoformat(paid_off_date) if paid_off_date.strip() else date.today()
+        result = mark_payment_paid_off(db, payment_id=payment_id, paid_off_date=resolved_date)
+        return _render_interactive_panels(
+            request,
+            db,
+            action_notice=f"Payment marked paid off. Canceled {result.canceled_occurrences_count} future occurrences.",
+        )
+    except (ActionValidationError, ValueError) as exc:
+        return _render_interactive_panels(request, db, action_error=str(exc))

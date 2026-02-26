@@ -4,7 +4,7 @@
     <p class="muted">Manually run Phase 2 occurrence generation for testing.</p>
     <form
       hx-post="/admin/run-generation"
-      hx-target="#generation-panel"
+      hx-target="#interactive-panels"
       hx-swap="outerHTML"
       method="post"
       class="inline-form"
@@ -17,7 +17,7 @@
     </form>
     <form
       hx-post="/admin/run-generation-once-today"
-      hx-target="#generation-panel"
+      hx-target="#interactive-panels"
       hx-swap="outerHTML"
       method="post"
       class="inline-form"

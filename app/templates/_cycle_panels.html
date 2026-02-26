@@ -14,6 +14,7 @@
               <th>Payment</th>
               <th>Amount</th>
               <th>Status</th>
+              <th>Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -23,6 +24,80 @@
                 <td>{{ row.payment_name }}</td>
                 <td>${{ '%.2f'|format(row.expected_amount) }}</td>
                 <td><span class="status-pill status-{{ row.status }}">{{ row.status }}</span></td>
+                <td class="actions-cell">
+                  {% if row.status == "scheduled" %}
+                    <form
+                      hx-post="/occurrences/{{ row.occurrence_id }}/mark-paid"
+                      hx-target="#interactive-panels"
+                      hx-swap="outerHTML"
+                      method="post"
+                      class="inline-form"
+                    >
+                      <button type="submit">Mark Paid</button>
+                    </form>
+                    <form
+                      hx-post="/occurrences/{{ row.occurrence_id }}/skip"
+                      hx-target="#interactive-panels"
+                      hx-swap="outerHTML"
+                      method="post"
+                      class="inline-form"
+                    >
+                      <button type="submit">Skip</button>
+                    </form>
+                    <details>
+                      <summary>Edit Paid</summary>
+                      <form
+                        hx-post="/occurrences/{{ row.occurrence_id }}/mark-paid"
+                        hx-target="#interactive-panels"
+                        hx-swap="outerHTML"
+                        method="post"
+                        class="stack"
+                      >
+                        <label>
+                          <span>Amount Paid</span>
+                          <input type="number" name="amount_paid" min="0" step="0.01" placeholder="{{ '%.2f'|format(row.expected_amount) }}">
+                        </label>
+                        <label>
+                          <span>Paid Date</span>
+                          <input type="date" name="paid_date">
+                        </label>
+                        <button type="submit">Save Paid</button>
+                      </form>
+                    </details>
+                  {% elif row.status == "completed" %}
+                    <form
+                      hx-post="/occurrences/{{ row.occurrence_id }}/undo-paid"
+                      hx-target="#interactive-panels"
+                      hx-swap="outerHTML"
+                      method="post"
+                      class="inline-form"
+                    >
+                      <button type="submit">Undo</button>
+                    </form>
+                    <details>
+                      <summary>Edit Paid</summary>
+                      <form
+                        hx-post="/occurrences/{{ row.occurrence_id }}/mark-paid"
+                        hx-target="#interactive-panels"
+                        hx-swap="outerHTML"
+                        method="post"
+                        class="stack"
+                      >
+                        <label>
+                          <span>Amount Paid</span>
+                          <input type="number" name="amount_paid" min="0" step="0.01">
+                        </label>
+                        <label>
+                          <span>Paid Date</span>
+                          <input type="date" name="paid_date">
+                        </label>
+                        <button type="submit">Update Paid</button>
+                      </form>
+                    </details>
+                  {% else %}
+                    <span class="muted">—</span>
+                  {% endif %}
+                </td>
               </tr>
             {% endfor %}
           </tbody>
@@ -33,4 +108,3 @@
     </article>
   {% endfor %}
 </section>
-

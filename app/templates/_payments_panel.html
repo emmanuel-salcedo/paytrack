@@ -3,7 +3,7 @@
     <h2>Payments (Minimal CRUD)</h2>
     <form
       hx-post="/payments"
-      hx-target="#payments-panel"
+      hx-target="#interactive-panels"
       hx-swap="outerHTML"
       method="post"
       class="stack"
@@ -48,6 +48,7 @@
             <th>Initial Due</th>
             <th>Recurrence</th>
             <th>Status</th>
+            <th>Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -58,6 +59,37 @@
               <td>{{ payment.initial_due_date }}</td>
               <td>{{ payment.recurrence_type }}</td>
               <td>{{ "Active" if payment.is_active else "Archived" }}</td>
+              <td>
+                {% if payment.is_active %}
+                  <form
+                    hx-post="/payments/{{ payment.id }}/paid-off"
+                    hx-target="#interactive-panels"
+                    hx-swap="outerHTML"
+                    method="post"
+                    class="inline-form"
+                  >
+                    <button type="submit">Paid Off</button>
+                  </form>
+                  <details>
+                    <summary>Edit Date</summary>
+                    <form
+                      hx-post="/payments/{{ payment.id }}/paid-off"
+                      hx-target="#interactive-panels"
+                      hx-swap="outerHTML"
+                      method="post"
+                      class="stack"
+                    >
+                      <label>
+                        <span>Paid Off Date</span>
+                        <input type="date" name="paid_off_date">
+                      </label>
+                      <button type="submit">Apply</button>
+                    </form>
+                  </details>
+                {% else %}
+                  <span class="muted">—</span>
+                {% endif %}
+              </td>
             </tr>
           {% endfor %}
         </tbody>
@@ -67,4 +99,3 @@
     {% endif %}
   </article>
 </div>
-

@@ -112,6 +112,7 @@ button {
 .payments-table th {
   color: var(--muted);
   font-weight: 600;
+  vertical-align: top;
 }
 
 .compact-table {
@@ -125,6 +126,21 @@ button {
   padding: 0.1rem 0.5rem;
   border: 1px solid rgba(23, 20, 17, 0.15);
   background: rgba(23, 20, 17, 0.04);
+}
+
+.actions-cell {
+  min-width: 180px;
+  vertical-align: top;
+}
+
+details {
+  margin-top: 0.3rem;
+}
+
+summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 0.85rem;
 }
 
 .status-scheduled {

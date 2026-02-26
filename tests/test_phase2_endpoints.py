@@ -209,6 +209,7 @@ def test_web_htmx_payments_and_generation_panels(tmp_path) -> None:
             )
             assert create_resp.status_code == 200
             assert "Gym" in create_resp.text
+            assert "interactive-panels" in create_resp.text
             assert "payments-panel" in create_resp.text
 
             gen_resp = client.post(
@@ -217,8 +218,45 @@ def test_web_htmx_payments_and_generation_panels(tmp_path) -> None:
                 headers={"HX-Request": "true"},
             )
             assert gen_resp.status_code == 200
+            assert "interactive-panels" in gen_resp.text
             assert "generation-panel" in gen_resp.text
             assert "Inserted" in gen_resp.text
+
+            payments_api = client.get("/api/payments")
+            assert payments_api.status_code == 200
+            gym_payment = next(row for row in payments_api.json() if row["name"] == "Gym")
+
+            current_cycle = client.get("/api/cycles/current")
+            next_cycle = client.get("/api/cycles/next")
+            all_occurrences = current_cycle.json()["occurrences"] + next_cycle.json()["occurrences"]
+            gym_occurrence = next((row for row in all_occurrences if row["payment_name"] == "Gym"), None)
+            assert gym_occurrence is not None
+
+            mark_paid_web = client.post(
+                f"/occurrences/{gym_occurrence['occurrence_id']}/mark-paid",
+                data={},
+                headers={"HX-Request": "true"},
+            )
+            assert mark_paid_web.status_code == 200
+            assert "Occurrence marked paid." in mark_paid_web.text
+            assert "completed" in mark_paid_web.text
+
+            undo_paid_web = client.post(
+                f"/occurrences/{gym_occurrence['occurrence_id']}/undo-paid",
+                data={},
+                headers={"HX-Request": "true"},
+            )
+            assert undo_paid_web.status_code == 200
+            assert "Paid status undone." in undo_paid_web.text
+
+            paid_off_web = client.post(
+                f"/payments/{gym_payment['id']}/paid-off",
+                data={},
+                headers={"HX-Request": "true"},
+            )
+            assert paid_off_web.status_code == 200
+            assert "Payment marked paid off." in paid_off_web.text
+            assert "Archived" in paid_off_web.text
 
             guarded_first = client.post(
                 "/admin/run-generation-once-today",

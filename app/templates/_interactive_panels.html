@@ -1,0 +1,16 @@
+<div id="interactive-panels" class="stack">
+  {% if action_notice %}
+    <p class="success" role="status">{{ action_notice }}</p>
+  {% endif %}
+  {% if action_error %}
+    <p class="error" role="alert">{{ action_error }}</p>
+  {% endif %}
+
+  {% include "_cycle_panels.html" %}
+
+  <section class="grid" aria-label="Phase 2 tools">
+    {% include "_payments_panel.html" %}
+    {% include "_generation_panel.html" %}
+  </section>
+</div>
+

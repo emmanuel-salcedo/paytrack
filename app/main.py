@@ -11,7 +11,9 @@ from fastapi.staticfiles import StaticFiles
 from app.logging_config import configure_logging
 from app.routes.api import api_router
 from app.routes.web import web_router
+from app.services.notification_jobs_service import run_notification_jobs_once_per_day_in_session_if_ready
 from app.services.occurrence_generation import run_generate_occurrences_once_per_day_if_ready
+from app.db import SessionLocal
 from app.services.seeding import seed_defaults_if_ready
 
 configure_logging()
@@ -34,6 +36,22 @@ async def lifespan(app: FastAPI):
             )
         else:
             logger.info("Occurrence generation startup daily run skipped (already ran today)")
+    with SessionLocal() as session:
+        notification_run = run_notification_jobs_once_per_day_in_session_if_ready(session, today=date.today())
+        if notification_run is not None:
+            if notification_run.ran:
+                logger.info(
+                    "Notification jobs startup daily run completed",
+                    extra={
+                        "daily_summary_created": notification_run.daily_summary_created,
+                        "due_soon_created": notification_run.due_soon_created,
+                        "overdue_created": notification_run.overdue_created,
+                        "telegram_sent": notification_run.telegram_sent,
+                        "telegram_errors": notification_run.telegram_errors,
+                    },
+                )
+            else:
+                logger.info("Notification jobs startup daily run skipped (already ran today)")
     yield
     logger.info("Shutting down PayTrack application")
 

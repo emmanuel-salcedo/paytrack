@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.models import Notification
+from app.models import Notification, NotificationLog
 
 
 class NotificationsValidationError(ValueError):
@@ -43,6 +44,32 @@ def create_in_app_notification(
     session.commit()
     session.refresh(row)
     return row
+
+
+def try_log_notification_delivery(
+    session: Session,
+    *,
+    type: str,
+    channel: str,
+    bucket_date: date,
+    dedup_key: str,
+    occurrence_id: int | None = None,
+) -> bool:
+    session.add(
+        NotificationLog(
+            type=type,
+            channel=channel,
+            bucket_date=bucket_date,
+            occurrence_id=occurrence_id,
+            dedup_key=dedup_key,
+        )
+    )
+    try:
+        session.commit()
+        return True
+    except IntegrityError:
+        session.rollback()
+        return False
 
 
 def list_notifications(session: Session, *, limit: int = 200) -> list[NotificationRowView]:

@@ -4,25 +4,39 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{% block title %}PayTrack{% endblock %}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', path='styles.css') }}">
     <script src="https://unpkg.com/htmx.org@2.0.4" defer></script>
   </head>
   <body>
-    <main class="shell">
-      <nav class="top-nav" aria-label="Primary">
-        <a class="{% if request.url.path.startswith('/dashboard') or request.url.path == '/' %}active{% endif %}" href="/dashboard">Dashboard</a>
-        <a class="{% if request.url.path.startswith('/upcoming') %}active{% endif %}" href="/upcoming">Upcoming</a>
-        <a class="{% if request.url.path.startswith('/payments') %}active{% endif %}" href="/payments">Payments</a>
-        <a class="{% if request.url.path.startswith('/history') %}active{% endif %}" href="/history">History</a>
-        <a class="{% if request.url.path.startswith('/settings') %}active{% endif %}" href="/settings">Settings</a>
-        <a class="{% if request.url.path.startswith('/notifications') %}active{% endif %}" href="/notifications">
-          Notifications
-          {% if notifications_unread_count|default(0) > 0 %}
-            <span class="nav-badge">{{ notifications_unread_count }}</span>
-          {% endif %}
-        </a>
-      </nav>
-      {% block content %}{% endblock %}
-    </main>
+    <div class="app-layout">
+      <aside class="side-rail" aria-label="Primary navigation">
+        <div class="brand-block">
+          <div class="brand-mark">PT</div>
+          <div>
+            <div class="brand-title">PayTrack</div>
+            <div class="brand-subtitle">Bi-weekly Cycle</div>
+          </div>
+        </div>
+        <nav class="top-nav">
+          <a class="{% if request.url.path.startswith('/dashboard') or request.url.path == '/' %}active{% endif %}" href="/dashboard">Dashboard</a>
+          <a class="{% if request.url.path.startswith('/upcoming') %}active{% endif %}" href="/upcoming">Upcoming</a>
+          <a class="{% if request.url.path.startswith('/payments') %}active{% endif %}" href="/payments">Payments</a>
+          <a class="{% if request.url.path.startswith('/history') %}active{% endif %}" href="/history">History</a>
+          <a class="{% if request.url.path.startswith('/settings') %}active{% endif %}" href="/settings">Settings</a>
+          <a class="{% if request.url.path.startswith('/notifications') %}active{% endif %}" href="/notifications">
+            Notifications
+            {% if notifications_unread_count|default(0) > 0 %}
+              <span class="nav-badge">{{ notifications_unread_count }}</span>
+            {% endif %}
+          </a>
+        </nav>
+      </aside>
+      <main class="shell">
+        {% block content %}{% endblock %}
+      </main>
+    </div>
   </body>
-  </html>
+</html>

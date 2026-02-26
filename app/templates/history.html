@@ -68,10 +68,10 @@
               {% if row.amount_paid is not none %}
                 ${{ '%.2f'|format(row.amount_paid) }}
               {% else %}
-                <span class="muted">—</span>
+                <span class="muted">-</span>
               {% endif %}
             </td>
-            <td>{{ row.paid_date or "—" }}</td>
+            <td>{{ row.paid_date or "-" }}</td>
           </tr>
         {% endfor %}
       </tbody>

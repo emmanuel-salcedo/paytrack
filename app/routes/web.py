@@ -31,6 +31,10 @@ from app.services.notifications_service import (
     mark_all_notifications_read,
     mark_notification_read,
 )
+from app.services.notification_jobs_service import (
+    run_notification_jobs_now_if_ready,
+    run_notification_jobs_once_per_day_in_session_if_ready,
+)
 from app.services.occurrence_generation import (
     generate_occurrences_ahead,
     run_generate_occurrences_once_per_day_in_session_if_ready,
@@ -45,6 +49,7 @@ from app.services.settings_service import (
     update_app_settings,
     update_pay_schedule,
 )
+from app.services.telegram_service import TelegramDeliveryError, send_telegram_message
 
 templates = Jinja2Templates(directory=str(Path(__file__).resolve().parents[1] / "templates"))
 web_router = APIRouter(tags=["web"])
@@ -239,18 +244,21 @@ def root_redirect() -> RedirectResponse:
 def dashboard_page(request: Request, db: Session = Depends(get_db_session)):
     # First-request-of-day fallback: safe to call on every request because job_runs guard de-dupes.
     run_generate_occurrences_once_per_day_in_session_if_ready(db, today=date.today())
+    run_notification_jobs_once_per_day_in_session_if_ready(db, today=date.today())
     return _render_dashboard_page(request, db)
 
 
 @web_router.get("/payments")
 def payments_page(request: Request, db: Session = Depends(get_db_session)):
     run_generate_occurrences_once_per_day_in_session_if_ready(db, today=date.today())
+    run_notification_jobs_once_per_day_in_session_if_ready(db, today=date.today())
     return _render_payments_page(request, db)
 
 
 @web_router.get("/upcoming")
 def upcoming_page(request: Request, db: Session = Depends(get_db_session)):
     run_generate_occurrences_once_per_day_in_session_if_ready(db, today=date.today())
+    run_notification_jobs_once_per_day_in_session_if_ready(db, today=date.today())
     return _render_upcoming_page(request, db)
 
 
@@ -954,16 +962,20 @@ def send_test_telegram_message_web(
             settings_error="Telegram bot token and chat ID are required to send a test message.",
         )
 
-    _notify_best_effort(
-        db,
-        type="telegram_test",
-        title="Telegram Test Requested",
-        body="Telegram test message simulated locally (external integration pending).",
-    )
+    try:
+        send_telegram_message(
+            bot_token=app_settings.telegram_bot_token,
+            chat_id=app_settings.telegram_chat_id,
+            text="PayTrack test message: Telegram delivery is configured.",
+        )
+    except TelegramDeliveryError as exc:
+        return _render_settings_page(request, db, settings_error=str(exc))
+
+    _notify_best_effort(db, type="telegram_test", title="Telegram Test Sent", body="Telegram test message delivered.")
     return _render_settings_page(
         request,
         db,
-        settings_notice="Telegram test message simulated locally (external integration pending).",
+        settings_notice="Telegram test message sent.",
     )
 
 
@@ -1002,3 +1014,41 @@ def mark_all_notifications_read_web(
 ):
     count = mark_all_notifications_read(db, now=datetime.now())
     return _render_notifications_page(request, db, notifications_notice=f"Marked {count} notifications read.")
+
+
+@web_router.post("/notifications/run-jobs")
+def run_notification_jobs_web(
+    request: Request,
+    db: Session = Depends(get_db_session),
+):
+    result = run_notification_jobs_now_if_ready(db, today=date.today())
+    if result is None:
+        return _render_notifications_page(request, db, notifications_error="Notification jobs are not ready yet.")
+    notice = (
+        "Notification jobs ran. "
+        f"Daily summary: {result.daily_summary_created}, due soon: {result.due_soon_created}, "
+        f"overdue: {result.overdue_created}, telegram sent: {result.telegram_sent}."
+    )
+    if result.telegram_errors:
+        notice += f" Telegram errors: {result.telegram_errors}."
+    return _render_notifications_page(request, db, notifications_notice=notice)
+
+
+@web_router.post("/notifications/run-jobs-once-today")
+def run_notification_jobs_once_today_web(
+    request: Request,
+    db: Session = Depends(get_db_session),
+):
+    result = run_notification_jobs_once_per_day_in_session_if_ready(db, today=date.today())
+    if result is None:
+        return _render_notifications_page(request, db, notifications_error="Notification jobs are not ready yet.")
+    if not result.ran:
+        return _render_notifications_page(request, db, notifications_notice="Notification jobs already ran today.")
+    notice = (
+        "Notification jobs ran (guarded). "
+        f"Daily summary: {result.daily_summary_created}, due soon: {result.due_soon_created}, "
+        f"overdue: {result.overdue_created}, telegram sent: {result.telegram_sent}."
+    )
+    if result.telegram_errors:
+        notice += f" Telegram errors: {result.telegram_errors}."
+    return _render_notifications_page(request, db, notifications_notice=notice)

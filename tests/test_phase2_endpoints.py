@@ -484,7 +484,7 @@ def test_web_htmx_payments_and_generation_panels(tmp_path) -> None:
         app.dependency_overrides.clear()
 
 
-def test_settings_and_notifications_pages_are_db_backed(tmp_path) -> None:
+def test_settings_and_notifications_pages_are_db_backed(tmp_path, monkeypatch) -> None:
     SessionLocal = _test_session_factory(tmp_path)
 
     def override_get_db():
@@ -492,6 +492,10 @@ def test_settings_and_notifications_pages_are_db_backed(tmp_path) -> None:
 
     app.dependency_overrides[get_db_session] = override_get_db
     try:
+        monkeypatch.setattr(
+            "app.routes.web.send_telegram_message",
+            lambda **kwargs: {"ok": True},
+        )
         with TestClient(app) as client:
             settings_before = client.get("/settings")
             assert settings_before.status_code == 200
@@ -519,7 +523,7 @@ def test_settings_and_notifications_pages_are_db_backed(tmp_path) -> None:
 
             test_telegram = client.post("/settings/telegram/test")
             assert test_telegram.status_code == 200
-            assert "Telegram test message simulated locally" in test_telegram.text
+            assert "Telegram test message sent." in test_telegram.text
 
             bad_settings = client.post(
                 "/settings/app",
@@ -543,7 +547,7 @@ def test_settings_and_notifications_pages_are_db_backed(tmp_path) -> None:
             assert "Notifications Center" in notifications_page.text
             assert "Unread: 3" in notifications_page.text
             assert "nav-badge" in notifications_page.text
-            assert "Telegram Test Requested" in notifications_page.text
+            assert "Telegram Test Sent" in notifications_page.text
 
             mark_one = client.post("/notifications/1/read")
             assert mark_one.status_code == 200
@@ -556,7 +560,7 @@ def test_settings_and_notifications_pages_are_db_backed(tmp_path) -> None:
         app.dependency_overrides.clear()
 
 
-def test_settings_api_endpoints_and_telegram_test(tmp_path) -> None:
+def test_settings_api_endpoints_and_telegram_test(tmp_path, monkeypatch) -> None:
     SessionLocal = _test_session_factory(tmp_path)
 
     def override_get_db():
@@ -564,6 +568,10 @@ def test_settings_api_endpoints_and_telegram_test(tmp_path) -> None:
 
     app.dependency_overrides[get_db_session] = override_get_db
     try:
+        monkeypatch.setattr(
+            "app.routes.api.send_telegram_message",
+            lambda **kwargs: {"ok": True},
+        )
         with TestClient(app) as client:
             settings_get = client.get("/api/settings")
             assert settings_get.status_code == 200
@@ -605,11 +613,74 @@ def test_settings_api_endpoints_and_telegram_test(tmp_path) -> None:
             ok_telegram_test = client.post("/api/settings/telegram/test")
             assert ok_telegram_test.status_code == 200
             assert ok_telegram_test.json()["sent"] is True
-            assert ok_telegram_test.json()["simulated"] is True
+            assert ok_telegram_test.json()["simulated"] is False
 
             notifications_page = client.get("/notifications")
             assert notifications_page.status_code == 200
-            assert "Telegram Test Requested" in notifications_page.text
+            assert "Telegram Test Sent" in notifications_page.text
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_admin_notification_jobs_create_due_soon_overdue_and_guard(tmp_path) -> None:
+    SessionLocal = _test_session_factory(tmp_path)
+
+    def override_get_db():
+        yield from _override_db(SessionLocal)
+
+    app.dependency_overrides[get_db_session] = override_get_db
+    try:
+        with TestClient(app) as client:
+            client.post(
+                "/api/payments",
+                json={
+                    "name": "Rent",
+                    "expected_amount": "1000.00",
+                    "initial_due_date": "2026-01-15",
+                    "recurrence_type": "monthly",
+                },
+            )
+            client.post(
+                "/api/payments",
+                json={
+                    "name": "Gym",
+                    "expected_amount": "25.00",
+                    "initial_due_date": "2026-01-10",
+                    "recurrence_type": "weekly",
+                },
+            )
+            gen = client.post("/api/admin/run-generation", json={"today": "2026-01-01", "horizon_days": 60})
+            assert gen.status_code == 200
+
+            run_jobs = client.post("/api/admin/run-notification-jobs", params={"today": "2026-01-15"})
+            assert run_jobs.status_code == 200
+            payload = run_jobs.json()
+            assert payload["ready"] is True
+            assert payload["ran"] is True
+            assert payload["daily_summary_created"] == 1
+            assert payload["due_soon_created"] == 1
+            assert payload["overdue_created"] == 1
+
+            run_jobs_again = client.post("/api/admin/run-notification-jobs", params={"today": "2026-01-15"})
+            assert run_jobs_again.status_code == 200
+            assert run_jobs_again.json()["daily_summary_created"] == 0
+            assert run_jobs_again.json()["due_soon_created"] == 0
+            assert run_jobs_again.json()["overdue_created"] == 0
+
+            guarded_first = client.post("/api/admin/run-notification-jobs-once-today", params={"today": "2026-01-16"})
+            assert guarded_first.status_code == 200
+            assert guarded_first.json()["ready"] is True
+            assert guarded_first.json()["ran"] is True
+
+            guarded_second = client.post("/api/admin/run-notification-jobs-once-today", params={"today": "2026-01-16"})
+            assert guarded_second.status_code == 200
+            assert guarded_second.json()["ran"] is False
+
+            notifications_page = client.get("/notifications")
+            assert notifications_page.status_code == 200
+            assert "Daily Summary" in notifications_page.text
+            assert "Due Soon" in notifications_page.text
+            assert "Overdue" in notifications_page.text
     finally:
         app.dependency_overrides.clear()
 

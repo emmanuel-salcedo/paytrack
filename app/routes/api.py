@@ -22,12 +22,17 @@ from app.services.actions_service import (
     UpdatePaymentInput,
 )
 from app.services.cycle_views_service import get_cycle_snapshot
+from app.services.notification_jobs_service import (
+    run_notification_jobs_now_if_ready,
+    run_notification_jobs_once_per_day_in_session_if_ready,
+)
 from app.services.notifications_service import create_in_app_notification
 from app.services.occurrence_generation import (
     generate_occurrences_ahead,
     run_generate_occurrences_once_per_day_in_session_if_ready,
     run_generate_occurrences_once_per_day,
 )
+from app.services.telegram_service import TelegramDeliveryError, send_telegram_message
 from app.services.payments_service import CreatePaymentInput, create_payment, list_payments
 from app.services.settings_service import (
     SettingsValidationError,
@@ -264,17 +269,20 @@ def send_test_telegram_message_api(db: Session = Depends(get_db_session)) -> dic
             status_code=400,
             detail="Telegram bot token and chat ID are required to send a test message.",
         )
-    row = create_in_app_notification(
-        db,
-        type="telegram_test",
-        title="Telegram Test Requested",
-        body="Telegram test message simulated locally (external integration pending).",
-    )
+    try:
+        send_telegram_message(
+            bot_token=app_settings.telegram_bot_token,
+            chat_id=app_settings.telegram_chat_id,
+            text="PayTrack test message: Telegram delivery is configured.",
+        )
+    except TelegramDeliveryError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    row = create_in_app_notification(db, type="telegram_test", title="Telegram Test Sent", body="Telegram test message delivered.")
     return {
         "sent": True,
-        "simulated": True,
+        "simulated": False,
         "notification_id": row.id,
-        "message": "Telegram test message simulated locally (external integration pending).",
+        "message": "Telegram test message sent.",
     }
 
 
@@ -368,6 +376,48 @@ def ensure_daily_generation_api(payload: ManualGenerationRequest, db: Session = 
             }
         )
     return response
+
+
+@api_router.post("/admin/run-notification-jobs")
+def run_notification_jobs_api(
+    today: date | None = Query(default=None),
+    db: Session = Depends(get_db_session),
+) -> dict[str, object]:
+    result = run_notification_jobs_now_if_ready(db, today=today or date.today())
+    if result is None:
+        return {"ready": False, "ran": False, "job_name": "run_notification_jobs"}
+    return {
+        "ready": True,
+        "ran": result.ran,
+        "job_name": result.job_name,
+        "run_date": result.run_date.isoformat(),
+        "daily_summary_created": result.daily_summary_created,
+        "due_soon_created": result.due_soon_created,
+        "overdue_created": result.overdue_created,
+        "telegram_sent": result.telegram_sent,
+        "telegram_errors": result.telegram_errors,
+    }
+
+
+@api_router.post("/admin/run-notification-jobs-once-today")
+def run_notification_jobs_once_today_api(
+    today: date | None = Query(default=None),
+    db: Session = Depends(get_db_session),
+) -> dict[str, object]:
+    result = run_notification_jobs_once_per_day_in_session_if_ready(db, today=today or date.today())
+    if result is None:
+        return {"ready": False, "ran": False, "job_name": "run_notification_jobs"}
+    return {
+        "ready": True,
+        "ran": result.ran,
+        "job_name": result.job_name,
+        "run_date": result.run_date.isoformat(),
+        "daily_summary_created": result.daily_summary_created,
+        "due_soon_created": result.due_soon_created,
+        "overdue_created": result.overdue_created,
+        "telegram_sent": result.telegram_sent,
+        "telegram_errors": result.telegram_errors,
+    }
 
 
 @api_router.post("/occurrences/{occurrence_id}/mark-paid")

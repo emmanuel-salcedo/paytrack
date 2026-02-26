@@ -6,7 +6,7 @@
 <section class="hero">
   <span class="pill">Notifications</span>
   <h1>Notifications Center</h1>
-  <p class="muted">Unread: {{ notifications_unread_count }}{% if notifications_notice %} · {{ notifications_notice }}{% endif %}</p>
+  <p class="muted">Unread: {{ notifications_unread_count }}{% if notifications_notice %} | {{ notifications_notice }}{% endif %}</p>
 </section>
 
 {% if notifications_error %}
@@ -16,9 +16,17 @@
 <section class="card">
   <div class="inline-form" style="justify-content: space-between;">
     <h2>In-App Notifications</h2>
-    <form method="post" action="/notifications/mark-all-read">
-      <button type="submit">Mark All Read</button>
-    </form>
+    <div class="inline-form">
+      <form method="post" action="/notifications/run-jobs-once-today">
+        <button type="submit">Run Jobs Once Today</button>
+      </form>
+      <form method="post" action="/notifications/run-jobs">
+        <button type="submit">Run Jobs Now</button>
+      </form>
+      <form method="post" action="/notifications/mark-all-read">
+        <button type="submit">Mark All Read</button>
+      </form>
+    </div>
   </div>
 
   {% if notifications %}
@@ -54,7 +62,7 @@
                   <button type="submit">Mark Read</button>
                 </form>
               {% else %}
-                <span class="muted">—</span>
+                <span class="muted">-</span>
               {% endif %}
             </td>
           </tr>

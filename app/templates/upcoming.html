@@ -9,17 +9,33 @@
   <p class="muted">Projected due items and totals for the upcoming bi-weekly cycle.</p>
 </section>
 
+<section class="feature-band" aria-label="Upcoming cycle summary">
+  <div>
+    <p class="eyebrow">{{ next_cycle_snapshot.label }}</p>
+    <h2>{{ next_cycle_snapshot.cycle_start }} -> {{ next_cycle_snapshot.cycle_end }}</h2>
+    <p class="muted">Projected outflow based on current recurring schedules.</p>
+  </div>
+  <div class="feature-amount">
+    <span>Total Expected Outflow</span>
+    <strong>${{ '%.2f'|format(next_cycle_snapshot.scheduled_total) }}</strong>
+  </div>
+</section>
+
 <section class="grid" aria-label="Upcoming cycle preview">
   <article class="card">
-    <h2>{{ next_cycle_snapshot.label }}</h2>
-    <div class="row"><span>Range</span><strong>{{ next_cycle_snapshot.cycle_start }} → {{ next_cycle_snapshot.cycle_end }}</strong></div>
+    <h2>Cycle Totals</h2>
+    <div class="row"><span>Occurrences</span><strong>{{ next_cycle_snapshot.occurrence_count }}</strong></div>
     <div class="row"><span>Scheduled</span><strong>${{ '%.2f'|format(next_cycle_snapshot.scheduled_total) }}</strong></div>
+    <div class="row"><span>Paid (cash-flow)</span><strong>${{ '%.2f'|format(next_cycle_snapshot.paid_total) }}</strong></div>
+    <div class="row"><span>Skipped</span><strong>${{ '%.2f'|format(next_cycle_snapshot.skipped_total) }}</strong></div>
     <div class="row"><span>Remaining</span><strong>${{ '%.2f'|format(next_cycle_snapshot.remaining_total) }}</strong></div>
-    <div class="row"><span>Items</span><strong>{{ next_cycle_snapshot.occurrence_count }}</strong></div>
   </article>
 
   <article class="card">
-    <h2>Expected Payments</h2>
+    <div class="section-head">
+      <h2>Expected Payments</h2>
+      <a class="link-btn" href="/payments">Manage Payments</a>
+    </div>
     {% if next_cycle_snapshot.occurrences %}
       <table class="payments-table compact-table">
         <thead>

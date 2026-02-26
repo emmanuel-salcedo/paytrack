@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -381,9 +381,16 @@ def ensure_daily_generation_api(payload: ManualGenerationRequest, db: Session = 
 @api_router.post("/admin/run-notification-jobs")
 def run_notification_jobs_api(
     today: date | None = Query(default=None),
+    now: datetime | None = Query(default=None),
+    force_daily_summary: bool = Query(default=False),
     db: Session = Depends(get_db_session),
 ) -> dict[str, object]:
-    result = run_notification_jobs_now_if_ready(db, today=today or date.today())
+    result = run_notification_jobs_now_if_ready(
+        db,
+        today=today or date.today(),
+        now=now,
+        force_daily_summary=force_daily_summary,
+    )
     if result is None:
         return {"ready": False, "ran": False, "job_name": "run_notification_jobs"}
     return {
@@ -396,15 +403,18 @@ def run_notification_jobs_api(
         "overdue_created": result.overdue_created,
         "telegram_sent": result.telegram_sent,
         "telegram_errors": result.telegram_errors,
+        "daily_summary_deferred_before_time": result.daily_summary_deferred_before_time,
+        "daily_summary_ready_time": result.daily_summary_ready_time,
     }
 
 
 @api_router.post("/admin/run-notification-jobs-once-today")
 def run_notification_jobs_once_today_api(
     today: date | None = Query(default=None),
+    now: datetime | None = Query(default=None),
     db: Session = Depends(get_db_session),
 ) -> dict[str, object]:
-    result = run_notification_jobs_once_per_day_in_session_if_ready(db, today=today or date.today())
+    result = run_notification_jobs_once_per_day_in_session_if_ready(db, today=today or date.today(), now=now)
     if result is None:
         return {"ready": False, "ran": False, "job_name": "run_notification_jobs"}
     return {
@@ -417,6 +427,8 @@ def run_notification_jobs_once_today_api(
         "overdue_created": result.overdue_created,
         "telegram_sent": result.telegram_sent,
         "telegram_errors": result.telegram_errors,
+        "daily_summary_deferred_before_time": result.daily_summary_deferred_before_time,
+        "daily_summary_ready_time": result.daily_summary_ready_time,
     }
 
 

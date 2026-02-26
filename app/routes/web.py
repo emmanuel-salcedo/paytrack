@@ -244,21 +244,21 @@ def root_redirect() -> RedirectResponse:
 def dashboard_page(request: Request, db: Session = Depends(get_db_session)):
     # First-request-of-day fallback: safe to call on every request because job_runs guard de-dupes.
     run_generate_occurrences_once_per_day_in_session_if_ready(db, today=date.today())
-    run_notification_jobs_once_per_day_in_session_if_ready(db, today=date.today())
+    run_notification_jobs_once_per_day_in_session_if_ready(db, today=date.today(), now=datetime.now())
     return _render_dashboard_page(request, db)
 
 
 @web_router.get("/payments")
 def payments_page(request: Request, db: Session = Depends(get_db_session)):
     run_generate_occurrences_once_per_day_in_session_if_ready(db, today=date.today())
-    run_notification_jobs_once_per_day_in_session_if_ready(db, today=date.today())
+    run_notification_jobs_once_per_day_in_session_if_ready(db, today=date.today(), now=datetime.now())
     return _render_payments_page(request, db)
 
 
 @web_router.get("/upcoming")
 def upcoming_page(request: Request, db: Session = Depends(get_db_session)):
     run_generate_occurrences_once_per_day_in_session_if_ready(db, today=date.today())
-    run_notification_jobs_once_per_day_in_session_if_ready(db, today=date.today())
+    run_notification_jobs_once_per_day_in_session_if_ready(db, today=date.today(), now=datetime.now())
     return _render_upcoming_page(request, db)
 
 
@@ -1021,7 +1021,7 @@ def run_notification_jobs_web(
     request: Request,
     db: Session = Depends(get_db_session),
 ):
-    result = run_notification_jobs_now_if_ready(db, today=date.today())
+    result = run_notification_jobs_now_if_ready(db, today=date.today(), now=datetime.now())
     if result is None:
         return _render_notifications_page(request, db, notifications_error="Notification jobs are not ready yet.")
     notice = (
@@ -1031,6 +1031,8 @@ def run_notification_jobs_web(
     )
     if result.telegram_errors:
         notice += f" Telegram errors: {result.telegram_errors}."
+    if result.daily_summary_deferred_before_time and result.daily_summary_ready_time:
+        notice += f" Daily summary deferred until {result.daily_summary_ready_time}."
     return _render_notifications_page(request, db, notifications_notice=notice)
 
 
@@ -1039,7 +1041,7 @@ def run_notification_jobs_once_today_web(
     request: Request,
     db: Session = Depends(get_db_session),
 ):
-    result = run_notification_jobs_once_per_day_in_session_if_ready(db, today=date.today())
+    result = run_notification_jobs_once_per_day_in_session_if_ready(db, today=date.today(), now=datetime.now())
     if result is None:
         return _render_notifications_page(request, db, notifications_error="Notification jobs are not ready yet.")
     if not result.ran:
@@ -1051,4 +1053,6 @@ def run_notification_jobs_once_today_web(
     )
     if result.telegram_errors:
         notice += f" Telegram errors: {result.telegram_errors}."
+    if result.daily_summary_deferred_before_time and result.daily_summary_ready_time:
+        notice += f" Daily summary deferred until {result.daily_summary_ready_time}."
     return _render_notifications_page(request, db, notifications_notice=notice)

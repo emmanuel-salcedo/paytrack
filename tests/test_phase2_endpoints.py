@@ -652,7 +652,10 @@ def test_admin_notification_jobs_create_due_soon_overdue_and_guard(tmp_path) -> 
             gen = client.post("/api/admin/run-generation", json={"today": "2026-01-01", "horizon_days": 60})
             assert gen.status_code == 200
 
-            run_jobs = client.post("/api/admin/run-notification-jobs", params={"today": "2026-01-15"})
+            run_jobs = client.post(
+                "/api/admin/run-notification-jobs",
+                params={"today": "2026-01-15", "now": "2026-01-15T08:00:00"},
+            )
             assert run_jobs.status_code == 200
             payload = run_jobs.json()
             assert payload["ready"] is True
@@ -660,21 +663,49 @@ def test_admin_notification_jobs_create_due_soon_overdue_and_guard(tmp_path) -> 
             assert payload["daily_summary_created"] == 1
             assert payload["due_soon_created"] == 1
             assert payload["overdue_created"] == 1
+            assert payload["daily_summary_deferred_before_time"] is False
 
-            run_jobs_again = client.post("/api/admin/run-notification-jobs", params={"today": "2026-01-15"})
+            run_jobs_again = client.post(
+                "/api/admin/run-notification-jobs",
+                params={"today": "2026-01-15", "now": "2026-01-15T08:05:00"},
+            )
             assert run_jobs_again.status_code == 200
             assert run_jobs_again.json()["daily_summary_created"] == 0
             assert run_jobs_again.json()["due_soon_created"] == 0
             assert run_jobs_again.json()["overdue_created"] == 0
 
-            guarded_first = client.post("/api/admin/run-notification-jobs-once-today", params={"today": "2026-01-16"})
+            client.post(
+                "/api/settings/app",
+                json={
+                    "due_soon_days": 5,
+                    "daily_summary_time": "23:59",
+                    "telegram_enabled": False,
+                },
+            )
+
+            guarded_first = client.post(
+                "/api/admin/run-notification-jobs-once-today",
+                params={"today": "2026-01-16", "now": "2026-01-16T09:00:00"},
+            )
             assert guarded_first.status_code == 200
             assert guarded_first.json()["ready"] is True
             assert guarded_first.json()["ran"] is True
+            assert guarded_first.json()["daily_summary_created"] == 0
+            assert guarded_first.json()["daily_summary_deferred_before_time"] is True
 
-            guarded_second = client.post("/api/admin/run-notification-jobs-once-today", params={"today": "2026-01-16"})
+            guarded_second = client.post(
+                "/api/admin/run-notification-jobs-once-today",
+                params={"today": "2026-01-16", "now": "2026-01-16T23:59:00"},
+            )
             assert guarded_second.status_code == 200
             assert guarded_second.json()["ran"] is False
+
+            forced_after_defer = client.post(
+                "/api/admin/run-notification-jobs",
+                params={"today": "2026-01-16", "now": "2026-01-16T23:59:00"},
+            )
+            assert forced_after_defer.status_code == 200
+            assert forced_after_defer.json()["daily_summary_created"] == 1
 
             notifications_page = client.get("/notifications")
             assert notifications_page.status_code == 200

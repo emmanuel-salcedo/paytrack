@@ -405,6 +405,134 @@ pre {
   white-space: pre-wrap;
 }
 
+.eyebrow {
+  margin: 0 0 0.35rem;
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #64748b;
+}
+
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.stat-card h2 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.stat-card-primary {
+  background:
+    radial-gradient(circle at 85% 15%, rgba(255, 255, 255, 0.16), transparent 35%),
+    linear-gradient(135deg, #1152d4, #1f6fff);
+  color: #fff;
+  border-color: rgba(17, 82, 212, 0.25);
+}
+
+.stat-card-primary .eyebrow,
+.stat-card-primary .muted {
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.stat-card-primary .mini-rows div {
+  border-top-color: rgba(255, 255, 255, 0.16);
+}
+
+.big-amount {
+  margin: 0.5rem 0 0.1rem;
+  font-size: 2rem;
+  line-height: 1;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+
+.mini-rows {
+  margin-top: 0.8rem;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.mini-rows div {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding-top: 0.35rem;
+  border-top: 1px solid rgba(100, 116, 139, 0.18);
+  font-size: 0.88rem;
+}
+
+.feature-band {
+  margin-top: 1rem;
+  border-radius: 14px;
+  border: 1px solid rgba(17, 82, 212, 0.16);
+  background: linear-gradient(135deg, rgba(17, 82, 212, 0.06), rgba(14, 165, 233, 0.05));
+  padding: 1rem 1.1rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+}
+
+.feature-band h2 {
+  margin: 0.2rem 0;
+  font-size: 1.25rem;
+}
+
+.feature-amount {
+  min-width: 220px;
+  padding: 0.9rem 1rem;
+  border-radius: 12px;
+  background: #1152d4;
+  color: #fff;
+  display: grid;
+  gap: 0.2rem;
+  box-shadow: 0 12px 24px rgba(17, 82, 212, 0.18);
+}
+
+.feature-amount span {
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.feature-amount strong {
+  font-size: 1.55rem;
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+
+.section-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  gap: 0.75rem;
+  margin-bottom: 0.35rem;
+}
+
+.history-layout {
+  margin-top: 1rem;
+  display: grid;
+  grid-template-columns: 300px minmax(0, 1fr);
+  gap: 1rem;
+}
+
+.history-filters {
+  align-self: start;
+  position: sticky;
+  top: 1rem;
+}
+
+.history-results .payments-table {
+  margin-top: 0.5rem;
+}
+
 @media (max-width: 900px) {
   .app-layout {
     grid-template-columns: 1fr;
@@ -424,6 +552,24 @@ pre {
 
   .shell {
     padding-top: 1rem;
+  }
+
+  .stat-grid,
+  .history-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .history-filters {
+    position: static;
+  }
+
+  .feature-band {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .feature-amount {
+    min-width: 0;
   }
 }
 

@@ -21,6 +21,7 @@ def send_telegram_message(
     bot_token: str,
     chat_id: str,
     text: str,
+    parse_mode: str | None = None,
     timeout_seconds: float = 10.0,
 ) -> TelegramSendResult:
     token = bot_token.strip()
@@ -31,7 +32,10 @@ def send_telegram_message(
         raise TelegramDeliveryError("Telegram chat ID is required.")
 
     endpoint = f"https://api.telegram.org/bot{token}/sendMessage"
-    payload = parse.urlencode({"chat_id": chat, "text": text}).encode("utf-8")
+    payload_data = {"chat_id": chat, "text": text}
+    if parse_mode:
+        payload_data["parse_mode"] = parse_mode
+    payload = parse.urlencode(payload_data).encode("utf-8")
     req = request.Request(
         endpoint,
         data=payload,

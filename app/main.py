@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from contextlib import asynccontextmanager
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -37,7 +37,11 @@ async def lifespan(app: FastAPI):
         else:
             logger.info("Occurrence generation startup daily run skipped (already ran today)")
     with SessionLocal() as session:
-        notification_run = run_notification_jobs_once_per_day_in_session_if_ready(session, today=date.today())
+        notification_run = run_notification_jobs_once_per_day_in_session_if_ready(
+            session,
+            today=date.today(),
+            now=datetime.now(),
+        )
         if notification_run is not None:
             if notification_run.ran:
                 logger.info(
@@ -48,6 +52,7 @@ async def lifespan(app: FastAPI):
                         "overdue_created": notification_run.overdue_created,
                         "telegram_sent": notification_run.telegram_sent,
                         "telegram_errors": notification_run.telegram_errors,
+                        "daily_summary_deferred_before_time": notification_run.daily_summary_deferred_before_time,
                     },
                 )
             else:

@@ -2,7 +2,7 @@
   {% for snapshot in [current_cycle_snapshot, next_cycle_snapshot] %}
     <article class="card">
       <h2>{{ snapshot.label }}</h2>
-      <div class="row"><span>Range</span><strong>{{ snapshot.cycle_start }} → {{ snapshot.cycle_end }}</strong></div>
+      <div class="row"><span>Range</span><strong>{{ snapshot.cycle_start }} -> {{ snapshot.cycle_end }}</strong></div>
       <div class="row"><span>Occurrences</span><strong>{{ snapshot.occurrence_count }}</strong></div>
       <div class="row"><span>Scheduled</span><strong>${{ '%.2f'|format(snapshot.scheduled_total) }}</strong></div>
       <div class="row"><span>Paid</span><strong>${{ '%.2f'|format(snapshot.paid_total) }}</strong></div>
@@ -98,7 +98,7 @@
                       </form>
                     </details>
                   {% else %}
-                    <span class="muted">—</span>
+                    <span class="muted">-</span>
                   {% endif %}
                 </td>
               </tr>

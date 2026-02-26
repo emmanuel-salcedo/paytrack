@@ -55,21 +55,69 @@ def try_log_notification_delivery(
     dedup_key: str,
     occurrence_id: int | None = None,
 ) -> bool:
-    session.add(
-        NotificationLog(
-            type=type,
-            channel=channel,
-            bucket_date=bucket_date,
-            occurrence_id=occurrence_id,
-            dedup_key=dedup_key,
-        )
+    row = NotificationLog(
+        type=type,
+        channel=channel,
+        bucket_date=bucket_date,
+        occurrence_id=occurrence_id,
+        dedup_key=dedup_key,
+        status="sent",
+        delivered_at=datetime.now(),
     )
+    session.add(row)
     try:
         session.commit()
         return True
     except IntegrityError:
         session.rollback()
         return False
+
+
+def create_notification_log_entry(
+    session: Session,
+    *,
+    type: str,
+    channel: str,
+    bucket_date: date,
+    dedup_key: str,
+    occurrence_id: int | None = None,
+    status: str = "pending",
+) -> NotificationLog | None:
+    row = NotificationLog(
+        type=type,
+        channel=channel,
+        bucket_date=bucket_date,
+        occurrence_id=occurrence_id,
+        dedup_key=dedup_key,
+        status=status,
+        delivered_at=datetime.now() if status == "sent" else None,
+    )
+    session.add(row)
+    try:
+        session.commit()
+        session.refresh(row)
+        return row
+    except IntegrityError:
+        session.rollback()
+        return None
+
+
+def finalize_notification_log_entry(
+    session: Session,
+    *,
+    log_id: int,
+    status: str,
+    error_message: str | None = None,
+) -> NotificationLog | None:
+    row = session.get(NotificationLog, log_id)
+    if row is None:
+        return None
+    row.status = status
+    row.error_message = (error_message or "").strip() or None
+    row.delivered_at = datetime.now() if status == "sent" else None
+    session.commit()
+    session.refresh(row)
+    return row
 
 
 def list_notifications(session: Session, *, limit: int = 200) -> list[NotificationRowView]:

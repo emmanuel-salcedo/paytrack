@@ -408,6 +408,36 @@ def run_notification_jobs_api(
     }
 
 
+@api_router.post("/admin/run-daily-summary-now")
+def run_daily_summary_now_api(
+    today: date | None = Query(default=None),
+    now: datetime | None = Query(default=None),
+    db: Session = Depends(get_db_session),
+) -> dict[str, object]:
+    result = run_notification_jobs_now_if_ready(
+        db,
+        today=today or date.today(),
+        now=now,
+        force_daily_summary=True,
+    )
+    if result is None:
+        return {"ready": False, "ran": False, "job_name": "run_notification_jobs"}
+    return {
+        "ready": True,
+        "ran": result.ran,
+        "job_name": result.job_name,
+        "run_date": result.run_date.isoformat(),
+        "daily_summary_created": result.daily_summary_created,
+        "daily_summary_deferred_before_time": result.daily_summary_deferred_before_time,
+        "daily_summary_ready_time": result.daily_summary_ready_time,
+        "due_soon_created": result.due_soon_created,
+        "overdue_created": result.overdue_created,
+        "telegram_sent": result.telegram_sent,
+        "telegram_errors": result.telegram_errors,
+        "forced_daily_summary": True,
+    }
+
+
 @api_router.post("/admin/run-notification-jobs-once-today")
 def run_notification_jobs_once_today_api(
     today: date | None = Query(default=None),

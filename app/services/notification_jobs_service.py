@@ -9,7 +9,12 @@ from sqlalchemy import func, inspect, select
 from sqlalchemy.orm import Session
 
 from app.models import AppSettings, Notification, Occurrence, PaySchedule, Payment
-from app.services.notifications_service import create_in_app_notification, try_log_notification_delivery
+from app.services.notifications_service import (
+    create_in_app_notification,
+    create_notification_log_entry,
+    finalize_notification_log_entry,
+    try_log_notification_delivery,
+)
 from app.services.occurrence_generation import try_mark_daily_job_run
 from app.services.settings_service import get_or_create_settings_rows
 from app.services.telegram_service import TelegramDeliveryError, send_telegram_message
@@ -143,13 +148,15 @@ def _maybe_send_telegram(
     if not app_settings.telegram_bot_token or not app_settings.telegram_chat_id:
         return False, False
 
-    if not try_log_notification_delivery(
+    log_row = create_notification_log_entry(
         session,
         type=row_type,
         channel="telegram",
         bucket_date=bucket_date,
         dedup_key=dedup_key,
-    ):
+        status="pending",
+    )
+    if log_row is None:
         return False, False
 
     try:
@@ -159,9 +166,11 @@ def _maybe_send_telegram(
             text=text,
             parse_mode="MarkdownV2",
         )
+        finalize_notification_log_entry(session, log_id=log_row.id, status="sent")
         return True, False
-    except TelegramDeliveryError:
+    except TelegramDeliveryError as exc:
         # Prevent duplicate spam after connectivity/auth failures; an in-app notification is still written.
+        finalize_notification_log_entry(session, log_id=log_row.id, status="error", error_message=str(exc))
         return False, True
 
 

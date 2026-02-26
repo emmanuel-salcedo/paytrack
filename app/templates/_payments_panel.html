@@ -6,7 +6,13 @@
 
 <div id="payments-panel">
   <article class="card">
-    <h2>Payments (Minimal CRUD)</h2>
+    <div class="section-head">
+      <div>
+        <h2>Payments (Minimal CRUD)</h2>
+        <p class="muted">Create, edit, archive, and reactivate payment schedules.</p>
+      </div>
+    </div>
+
     <form
       hx-post="{{ payments_create_path }}"
       hx-target="{{ payments_panel_target }}"
@@ -73,7 +79,11 @@
               <td>${{ '%.2f'|format(payment.expected_amount) }}</td>
               <td>{{ payment.initial_due_date }}</td>
               <td>{{ payment.recurrence_type }}</td>
-              <td>{{ "Active" if payment.is_active else "Archived" }}</td>
+              <td>
+                <span class="status-pill {{ 'status-completed' if payment.is_active else 'status-canceled' }}">
+                  {{ "Active" if payment.is_active else "Archived" }}
+                </span>
+              </td>
               <td>
                 {% if payment.is_active %}
                   <div class="inline-form">
@@ -166,7 +176,7 @@
         </tbody>
       </table>
     {% else %}
-      <p class="muted">No payments yet — Add your first payment.</p>
+      <p class="muted">No payments yet - Add your first payment.</p>
     {% endif %}
   </article>
 </div>

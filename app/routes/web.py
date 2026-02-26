@@ -1019,9 +1019,16 @@ def mark_all_notifications_read_web(
 @web_router.post("/notifications/run-jobs")
 def run_notification_jobs_web(
     request: Request,
+    force_daily_summary: str | None = Form(None),
     db: Session = Depends(get_db_session),
 ):
-    result = run_notification_jobs_now_if_ready(db, today=date.today(), now=datetime.now())
+    force_daily = force_daily_summary is not None
+    result = run_notification_jobs_now_if_ready(
+        db,
+        today=date.today(),
+        now=datetime.now(),
+        force_daily_summary=force_daily,
+    )
     if result is None:
         return _render_notifications_page(request, db, notifications_error="Notification jobs are not ready yet.")
     notice = (
@@ -1033,6 +1040,8 @@ def run_notification_jobs_web(
         notice += f" Telegram errors: {result.telegram_errors}."
     if result.daily_summary_deferred_before_time and result.daily_summary_ready_time:
         notice += f" Daily summary deferred until {result.daily_summary_ready_time}."
+    if force_daily:
+        notice += " Daily summary force-run requested."
     return _render_notifications_page(request, db, notifications_notice=notice)
 
 
@@ -1055,4 +1064,27 @@ def run_notification_jobs_once_today_web(
         notice += f" Telegram errors: {result.telegram_errors}."
     if result.daily_summary_deferred_before_time and result.daily_summary_ready_time:
         notice += f" Daily summary deferred until {result.daily_summary_ready_time}."
+    return _render_notifications_page(request, db, notifications_notice=notice)
+
+
+@web_router.post("/notifications/run-daily-summary-now")
+def run_daily_summary_now_web(
+    request: Request,
+    db: Session = Depends(get_db_session),
+):
+    result = run_notification_jobs_now_if_ready(
+        db,
+        today=date.today(),
+        now=datetime.now(),
+        force_daily_summary=True,
+    )
+    if result is None:
+        return _render_notifications_page(request, db, notifications_error="Notification jobs are not ready yet.")
+    notice = "Forced daily summary run executed."
+    if result.daily_summary_created:
+        notice += " Daily summary created."
+    else:
+        notice += " Daily summary already existed for today."
+    if result.telegram_errors:
+        notice += f" Telegram errors: {result.telegram_errors}."
     return _render_notifications_page(request, db, notifications_notice=notice)

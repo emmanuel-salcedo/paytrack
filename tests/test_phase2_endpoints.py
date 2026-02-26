@@ -10,7 +10,7 @@ import app.models  # noqa: F401
 from app.db import get_db_session
 from app.main import app
 from app.models.base import Base
-from app.models.notifications import Notification
+from app.models.notifications import Notification, NotificationLog
 
 
 def _test_session_factory(tmp_path):
@@ -701,17 +701,70 @@ def test_admin_notification_jobs_create_due_soon_overdue_and_guard(tmp_path) -> 
             assert guarded_second.json()["ran"] is False
 
             forced_after_defer = client.post(
-                "/api/admin/run-notification-jobs",
+                "/api/admin/run-daily-summary-now",
                 params={"today": "2026-01-16", "now": "2026-01-16T23:59:00"},
             )
             assert forced_after_defer.status_code == 200
             assert forced_after_defer.json()["daily_summary_created"] == 1
+            assert forced_after_defer.json()["forced_daily_summary"] is True
 
             notifications_page = client.get("/notifications")
             assert notifications_page.status_code == 200
             assert "Daily Summary" in notifications_page.text
             assert "Due Soon" in notifications_page.text
             assert "Overdue" in notifications_page.text
+            assert "Force Daily Summary Now" in notifications_page.text
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_notification_log_records_telegram_error_status(tmp_path, monkeypatch) -> None:
+    SessionLocal = _test_session_factory(tmp_path)
+
+    def override_get_db():
+        yield from _override_db(SessionLocal)
+
+    app.dependency_overrides[get_db_session] = override_get_db
+    try:
+        from app.services.telegram_service import TelegramDeliveryError
+
+        monkeypatch.setattr(
+            "app.services.notification_jobs_service.send_telegram_message",
+            lambda **kwargs: (_ for _ in ()).throw(TelegramDeliveryError("telegram down")),
+        )
+        with TestClient(app) as client:
+            client.post(
+                "/api/settings/app",
+                json={
+                    "due_soon_days": 5,
+                    "daily_summary_time": "00:00",
+                    "telegram_enabled": True,
+                    "telegram_bot_token": "token",
+                    "telegram_chat_id": "chat",
+                },
+            )
+            client.post(
+                "/api/payments",
+                json={
+                    "name": "Gym",
+                    "expected_amount": "25.00",
+                    "initial_due_date": "2026-01-10",
+                    "recurrence_type": "weekly",
+                },
+            )
+            client.post("/api/admin/run-generation", json={"today": "2026-01-01", "horizon_days": 30})
+            run_jobs = client.post(
+                "/api/admin/run-notification-jobs",
+                params={"today": "2026-01-15", "now": "2026-01-15T08:00:00"},
+            )
+            assert run_jobs.status_code == 200
+            assert run_jobs.json()["telegram_errors"] >= 1
+
+            with SessionLocal() as session:
+                telegram_logs = session.query(NotificationLog).filter(NotificationLog.channel == "telegram").all()
+                assert telegram_logs
+                assert any(row.status == "error" for row in telegram_logs)
+                assert any((row.error_message or "").startswith("telegram down") for row in telegram_logs)
     finally:
         app.dependency_overrides.clear()
 

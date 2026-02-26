@@ -38,6 +38,9 @@ class NotificationLog(Base):
     bucket_date: Mapped[date] = mapped_column(Date, nullable=False)
     occurrence_id: Mapped[int | None] = mapped_column(ForeignKey("occurrences.id", ondelete="SET NULL"), nullable=True)
     dedup_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="sent")
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=False), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=False), server_default=func.now(), nullable=False
     )

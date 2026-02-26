@@ -13,64 +13,77 @@
   <p class="error" role="alert">{{ notifications_error }}</p>
 {% endif %}
 
-<section class="card">
-  <div class="inline-form" style="justify-content: space-between;">
-    <h2>In-App Notifications</h2>
-    <div class="inline-form">
-      <form method="post" action="/notifications/run-jobs-once-today">
+<section class="grid notifications-grid" aria-label="Notifications controls and list">
+  <article class="card">
+    <h2>Automation Controls</h2>
+    <p class="muted">Run notification jobs manually for testing or force the daily summary without waiting for the scheduled time.</p>
+    <div class="stack" style="margin-top: .5rem;">
+      <form method="post" action="/notifications/run-jobs-once-today" class="inline-form">
         <button type="submit">Run Jobs Once Today</button>
       </form>
-      <form method="post" action="/notifications/run-jobs">
+      <form method="post" action="/notifications/run-jobs" class="inline-form">
         <button type="submit">Run Jobs Now</button>
       </form>
-      <form method="post" action="/notifications/mark-all-read">
+      <form method="post" action="/notifications/run-daily-summary-now" class="inline-form">
+        <button type="submit">Force Daily Summary Now</button>
+      </form>
+      <form method="post" action="/notifications/mark-all-read" class="inline-form">
         <button type="submit">Mark All Read</button>
       </form>
     </div>
-  </div>
+  </article>
 
-  {% if notifications %}
-    <table class="payments-table">
-      <thead>
-        <tr>
-          <th>When</th>
-          <th>Type</th>
-          <th>Title</th>
-          <th>Status</th>
-          <th>Action</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for row in notifications %}
+  <article class="card">
+    <div class="section-head">
+      <div>
+        <h2>In-App Notifications</h2>
+        <p class="muted">Latest notifications and delivery outcomes from manual and automated jobs.</p>
+      </div>
+    </div>
+
+    {% if notifications %}
+      <table class="payments-table">
+        <thead>
           <tr>
-            <td>{{ row.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
-            <td>{{ row.type }}</td>
-            <td>
-              <div><strong>{{ row.title }}</strong></div>
-              <div class="muted">{{ row.body }}</div>
-            </td>
-            <td>
-              {% if row.is_read %}
-                <span class="status-pill status-completed">read</span>
-              {% else %}
-                <span class="status-pill status-scheduled">unread</span>
-              {% endif %}
-            </td>
-            <td>
-              {% if not row.is_read %}
-                <form method="post" action="/notifications/{{ row.id }}/read">
-                  <button type="submit">Mark Read</button>
-                </form>
-              {% else %}
-                <span class="muted">-</span>
-              {% endif %}
-            </td>
+            <th>When</th>
+            <th>Type</th>
+            <th>Title</th>
+            <th>Status</th>
+            <th>Action</th>
           </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  {% else %}
-    <p class="muted">No notifications yet.</p>
-  {% endif %}
+        </thead>
+        <tbody>
+          {% for row in notifications %}
+            <tr>
+              <td>{{ row.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+              <td>{{ row.type }}</td>
+              <td>
+                <div><strong>{{ row.title }}</strong></div>
+                <div class="muted">{{ row.body }}</div>
+              </td>
+              <td>
+                {% if row.is_read %}
+                  <span class="status-pill status-completed">read</span>
+                {% else %}
+                  <span class="status-pill status-scheduled">unread</span>
+                {% endif %}
+              </td>
+              <td>
+                {% if not row.is_read %}
+                  <form method="post" action="/notifications/{{ row.id }}/read">
+                    <button type="submit">Mark Read</button>
+                  </form>
+                {% else %}
+                  <span class="muted">-</span>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p class="muted">No notifications yet.</p>
+    {% endif %}
+  </article>
 </section>
 {% endblock %}

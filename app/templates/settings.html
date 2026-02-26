@@ -16,7 +16,19 @@
   <p class="error" role="alert">{{ settings_error }}</p>
 {% endif %}
 
-<section class="grid" aria-label="Settings forms">
+<section class="feature-band" aria-label="Settings status">
+  <div>
+    <p class="eyebrow">Current Runtime Settings</p>
+    <h2>{{ pay_schedule.timezone }}</h2>
+    <p class="muted">Anchor payday {{ pay_schedule.anchor_payday_date }} | Daily summary {{ app_settings.daily_summary_time }}</p>
+  </div>
+  <div class="feature-amount">
+    <span>Notification Window</span>
+    <strong>{{ app_settings.due_soon_days }} days</strong>
+  </div>
+</section>
+
+<section class="grid settings-grid" aria-label="Settings forms">
   <article class="card">
     <h2>Pay Schedule</h2>
     <form method="post" action="/settings/pay-schedule" class="stack">
@@ -47,7 +59,7 @@
         <input type="time" name="daily_summary_time" value="{{ app_settings.daily_summary_time }}">
         {% if app_settings_errors.daily_summary_time %}<small class="field-error">{{ app_settings_errors.daily_summary_time }}</small>{% endif %}
       </label>
-      <label>
+      <label class="toggle-line">
         <span>
           <input type="checkbox" name="telegram_enabled" value="1" {% if app_settings.telegram_enabled %}checked{% endif %}>
           Telegram Enabled
@@ -63,10 +75,8 @@
       </label>
       <div class="inline-form">
         <button type="submit">Save App Settings</button>
+        <button type="submit" formaction="/settings/telegram/test">Send Test Telegram Message</button>
       </div>
-    </form>
-    <form method="post" action="/settings/telegram/test" class="inline-form" style="margin-top: 0.75rem;">
-      <button type="submit">Send Test Telegram Message</button>
     </form>
   </article>
 </section>

@@ -533,6 +533,24 @@ pre {
   margin-top: 0.5rem;
 }
 
+.settings-grid {
+  align-items: start;
+}
+
+.toggle-line {
+  display: block;
+}
+
+.notifications-grid {
+  grid-template-columns: 320px minmax(0, 1fr);
+}
+
+.notifications-grid > .card:first-child {
+  align-self: start;
+  position: sticky;
+  top: 1rem;
+}
+
 @media (max-width: 900px) {
   .app-layout {
     grid-template-columns: 1fr;
@@ -555,11 +573,16 @@ pre {
   }
 
   .stat-grid,
-  .history-layout {
+  .history-layout,
+  .notifications-grid {
     grid-template-columns: 1fr;
   }
 
   .history-filters {
+    position: static;
+  }
+
+  .notifications-grid > .card:first-child {
     position: static;
   }
 

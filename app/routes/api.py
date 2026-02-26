@@ -1,13 +1,55 @@
 from __future__ import annotations
 
+from datetime import date
+from decimal import Decimal
+
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.db import get_db_session
+from app.models.payments import Payment
+from app.services.occurrence_generation import generate_occurrences_ahead
+from app.services.payments_service import CreatePaymentInput, create_payment, list_payments
 
 api_router = APIRouter(tags=["api"])
+
+
+class PaymentCreateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+    expected_amount: Decimal = Field(ge=0)
+    initial_due_date: date
+    recurrence_type: str
+    priority: int | None = None
+
+
+class PaymentResponse(BaseModel):
+    id: int
+    name: str
+    expected_amount: Decimal
+    initial_due_date: date
+    recurrence_type: str
+    priority: int | None
+    is_active: bool
+
+    @classmethod
+    def from_model(cls, payment: Payment) -> "PaymentResponse":
+        return cls(
+            id=payment.id,
+            name=payment.name,
+            expected_amount=Decimal(str(payment.expected_amount)),
+            initial_due_date=payment.initial_due_date,
+            recurrence_type=payment.recurrence_type,
+            priority=payment.priority,
+            is_active=payment.is_active,
+        )
+
+
+class ManualGenerationRequest(BaseModel):
+    today: date | None = None
+    horizon_days: int = Field(default=90, ge=1, le=365)
 
 
 @api_router.get("/health")
@@ -18,3 +60,38 @@ def health_check(db: Session = Depends(get_db_session)) -> dict[str, str]:
         raise HTTPException(status_code=503, detail="database unavailable") from exc
     return {"status": "ok"}
 
+
+@api_router.get("/payments", response_model=list[PaymentResponse])
+def payments_list(db: Session = Depends(get_db_session)) -> list[PaymentResponse]:
+    return [PaymentResponse.from_model(payment) for payment in list_payments(db)]
+
+
+@api_router.post("/payments", response_model=PaymentResponse, status_code=201)
+def payments_create(payload: PaymentCreateRequest, db: Session = Depends(get_db_session)) -> PaymentResponse:
+    try:
+        payment = create_payment(
+            db,
+            CreatePaymentInput(
+                name=payload.name,
+                expected_amount=payload.expected_amount,
+                initial_due_date=payload.initial_due_date,
+                recurrence_type=payload.recurrence_type,
+                priority=payload.priority,
+            ),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return PaymentResponse.from_model(payment)
+
+
+@api_router.post("/admin/run-generation")
+def manual_run_generation(payload: ManualGenerationRequest, db: Session = Depends(get_db_session)) -> dict[str, object]:
+    run_today = payload.today or date.today()
+    result = generate_occurrences_ahead(db, today=run_today, horizon_days=payload.horizon_days)
+    return {
+        "generated_count": result.generated_count,
+        "skipped_existing_count": result.skipped_existing_count,
+        "range_start": result.range_start.isoformat(),
+        "range_end": result.range_end.isoformat(),
+        "horizon_days": payload.horizon_days,
+    }

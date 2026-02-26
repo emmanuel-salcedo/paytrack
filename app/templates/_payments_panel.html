@@ -1,0 +1,70 @@
+<div id="payments-panel">
+  <article class="card">
+    <h2>Payments (Minimal CRUD)</h2>
+    <form
+      hx-post="/payments"
+      hx-target="#payments-panel"
+      hx-swap="outerHTML"
+      method="post"
+      class="stack"
+    >
+      <div class="form-grid">
+        <label>
+          <span>Name</span>
+          <input type="text" name="name" required>
+        </label>
+        <label>
+          <span>Amount</span>
+          <input type="number" name="expected_amount" min="0" step="0.01" required>
+        </label>
+        <label>
+          <span>Initial Due Date</span>
+          <input type="date" name="initial_due_date" required>
+        </label>
+        <label>
+          <span>Recurrence</span>
+          <select name="recurrence_type" required>
+            <option value="one_time">One-time</option>
+            <option value="weekly">Weekly</option>
+            <option value="biweekly">Bi-weekly</option>
+            <option value="monthly" selected>Monthly</option>
+            <option value="yearly">Yearly</option>
+          </select>
+        </label>
+      </div>
+      <button type="submit">Add Payment</button>
+    </form>
+
+    {% if payment_error %}
+      <p class="error" role="alert">{{ payment_error }}</p>
+    {% endif %}
+
+    {% if payments %}
+      <table class="payments-table">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Amount</th>
+            <th>Initial Due</th>
+            <th>Recurrence</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for payment in payments %}
+            <tr>
+              <td>{{ payment.name }}</td>
+              <td>${{ '%.2f'|format(payment.expected_amount) }}</td>
+              <td>{{ payment.initial_due_date }}</td>
+              <td>{{ payment.recurrence_type }}</td>
+              <td>{{ "Active" if payment.is_active else "Archived" }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p class="muted">No payments yet — Add your first payment.</p>
+    {% endif %}
+  </article>
+</div>
+

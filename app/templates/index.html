@@ -1,12 +1,12 @@
 {% extends "base.html" %}
 
-{% block title %}PayTrack | Phase 0{% endblock %}
+{% block title %}PayTrack | Phase 2{% endblock %}
 
 {% block content %}
 <section class="hero">
-  <span class="pill">Phase 0 Baseline</span>
+  <span class="pill">Phase 2 MVP Core</span>
   <h1>PayTrack</h1>
-  <p class="muted">FastAPI + Jinja2 + HTMX + SQLite/Alembic foundation is wired.</p>
+  <p class="muted">Foundation, recurrence engine, and occurrence generation are wired. Minimal payments CRUD is available below.</p>
 </section>
 
 <section class="grid" aria-label="Application defaults">
@@ -45,5 +45,9 @@
     <pre id="health-result" class="muted" aria-live="polite"></pre>
   </article>
 </section>
-{% endblock %}
 
+<section class="grid" aria-label="Phase 2 tools">
+  {% include "_payments_panel.html" %}
+  {% include "_generation_panel.html" %}
+</section>
+{% endblock %}

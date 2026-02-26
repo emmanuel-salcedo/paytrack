@@ -24,6 +24,27 @@ class NotificationRowView:
     read_at: datetime | None
 
 
+def create_in_app_notification(
+    session: Session,
+    *,
+    type: str,
+    title: str,
+    body: str,
+    occurrence_id: int | None = None,
+) -> Notification:
+    row = Notification(
+        type=type,
+        title=title,
+        body=body,
+        occurrence_id=occurrence_id,
+        is_read=False,
+    )
+    session.add(row)
+    session.commit()
+    session.refresh(row)
+    return row
+
+
 def list_notifications(session: Session, *, limit: int = 200) -> list[NotificationRowView]:
     rows = session.scalars(
         select(Notification).order_by(Notification.created_at.desc(), Notification.id.desc()).limit(limit)

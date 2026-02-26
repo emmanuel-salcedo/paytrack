@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+
+{% block title %}PayTrack | Upcoming Cycle{% endblock %}
+
+{% block content %}
+<section class="hero">
+  <span class="pill">Upcoming</span>
+  <h1>Next Pay Cycle Preview</h1>
+  <p class="muted">Projected due items and totals for the upcoming bi-weekly cycle.</p>
+</section>
+
+<section class="grid" aria-label="Upcoming cycle preview">
+  <article class="card">
+    <h2>{{ next_cycle_snapshot.label }}</h2>
+    <div class="row"><span>Range</span><strong>{{ next_cycle_snapshot.cycle_start }} → {{ next_cycle_snapshot.cycle_end }}</strong></div>
+    <div class="row"><span>Scheduled</span><strong>${{ '%.2f'|format(next_cycle_snapshot.scheduled_total) }}</strong></div>
+    <div class="row"><span>Remaining</span><strong>${{ '%.2f'|format(next_cycle_snapshot.remaining_total) }}</strong></div>
+    <div class="row"><span>Items</span><strong>{{ next_cycle_snapshot.occurrence_count }}</strong></div>
+  </article>
+
+  <article class="card">
+    <h2>Expected Payments</h2>
+    {% if next_cycle_snapshot.occurrences %}
+      <table class="payments-table compact-table">
+        <thead>
+          <tr>
+            <th>Due</th>
+            <th>Payment</th>
+            <th>Amount</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in next_cycle_snapshot.occurrences %}
+            <tr>
+              <td>{{ row.due_date }}</td>
+              <td>{{ row.payment_name }}</td>
+              <td>${{ '%.2f'|format(row.expected_amount) }}</td>
+              <td><span class="status-pill status-{{ row.status }}">{{ row.status }}</span></td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p class="muted">No generated occurrences in the upcoming cycle.</p>
+    {% endif %}
+  </article>
+</section>
+{% endblock %}

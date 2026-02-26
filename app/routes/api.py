@@ -22,12 +22,21 @@ from app.services.actions_service import (
     UpdatePaymentInput,
 )
 from app.services.cycle_views_service import get_cycle_snapshot
+from app.services.notifications_service import create_in_app_notification
 from app.services.occurrence_generation import (
     generate_occurrences_ahead,
     run_generate_occurrences_once_per_day_in_session_if_ready,
     run_generate_occurrences_once_per_day,
 )
 from app.services.payments_service import CreatePaymentInput, create_payment, list_payments
+from app.services.settings_service import (
+    SettingsValidationError,
+    UpdateAppSettingsInput,
+    UpdatePayScheduleInput,
+    get_or_create_settings_rows,
+    update_app_settings,
+    update_pay_schedule,
+)
 
 api_router = APIRouter(tags=["api"])
 
@@ -90,6 +99,36 @@ class UpdatePaymentRequest(BaseModel):
     priority: int | None = None
     today: date | None = None
     horizon_days: int = Field(default=90, ge=1, le=365)
+
+
+class PayScheduleUpdateRequest(BaseModel):
+    anchor_payday_date: date
+    timezone: str = Field(min_length=1, max_length=64)
+
+
+class AppSettingsUpdateRequest(BaseModel):
+    due_soon_days: int = Field(ge=0, le=365)
+    daily_summary_time: str
+    telegram_enabled: bool = False
+    telegram_bot_token: str | None = None
+    telegram_chat_id: str | None = None
+
+
+def _serialize_settings(db: Session) -> dict[str, object]:
+    pay_schedule, app_settings = get_or_create_settings_rows(db)
+    return {
+        "pay_schedule": {
+            "anchor_payday_date": pay_schedule.anchor_payday_date.isoformat(),
+            "timezone": pay_schedule.timezone,
+        },
+        "app_settings": {
+            "due_soon_days": app_settings.due_soon_days,
+            "daily_summary_time": app_settings.daily_summary_time,
+            "telegram_enabled": app_settings.telegram_enabled,
+            "telegram_bot_token": app_settings.telegram_bot_token,
+            "telegram_chat_id": app_settings.telegram_chat_id,
+        },
+    }
 
 
 def _serialize_cycle_snapshot(snapshot) -> dict[str, object]:
@@ -160,6 +199,83 @@ def payments_create(payload: PaymentCreateRequest, db: Session = Depends(get_db_
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return PaymentResponse.from_model(payment)
+
+
+@api_router.get("/settings")
+def get_settings_api(db: Session = Depends(get_db_session)) -> dict[str, object]:
+    return _serialize_settings(db)
+
+
+@api_router.post("/settings/pay-schedule")
+def update_pay_schedule_api(
+    payload: PayScheduleUpdateRequest,
+    db: Session = Depends(get_db_session),
+) -> dict[str, object]:
+    try:
+        row = update_pay_schedule(
+            db,
+            UpdatePayScheduleInput(
+                anchor_payday_date=payload.anchor_payday_date,
+                timezone=payload.timezone,
+            ),
+        )
+    except SettingsValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {
+        "anchor_payday_date": row.anchor_payday_date.isoformat(),
+        "timezone": row.timezone,
+    }
+
+
+@api_router.post("/settings/app")
+def update_app_settings_api(
+    payload: AppSettingsUpdateRequest,
+    db: Session = Depends(get_db_session),
+) -> dict[str, object]:
+    try:
+        row = update_app_settings(
+            db,
+            UpdateAppSettingsInput(
+                due_soon_days=payload.due_soon_days,
+                daily_summary_time=payload.daily_summary_time,
+                telegram_enabled=payload.telegram_enabled,
+                telegram_bot_token=payload.telegram_bot_token,
+                telegram_chat_id=payload.telegram_chat_id,
+            ),
+        )
+    except SettingsValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {
+        "due_soon_days": row.due_soon_days,
+        "daily_summary_time": row.daily_summary_time,
+        "telegram_enabled": row.telegram_enabled,
+        "telegram_bot_token": row.telegram_bot_token,
+        "telegram_chat_id": row.telegram_chat_id,
+    }
+
+
+@api_router.post("/settings/telegram/test")
+def send_test_telegram_message_api(db: Session = Depends(get_db_session)) -> dict[str, object]:
+    _, app_settings = get_or_create_settings_rows(db)
+    if not app_settings.telegram_enabled:
+        raise HTTPException(status_code=400, detail="Telegram is disabled.")
+    if not app_settings.telegram_bot_token or not app_settings.telegram_chat_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Telegram bot token and chat ID are required to send a test message.",
+        )
+    row = create_in_app_notification(
+        db,
+        type="telegram_test",
+        title="Telegram Test Requested",
+        body="Telegram test message simulated locally (external integration pending).",
+    )
+    return {
+        "sent": True,
+        "simulated": True,
+        "notification_id": row.id,
+        "message": "Telegram test message simulated locally (external integration pending).",
+    }
 
 
 @api_router.post("/admin/run-generation")

@@ -61,9 +61,13 @@
         <span>Telegram Chat ID</span>
         <input type="text" name="telegram_chat_id" value="{{ app_settings.telegram_chat_id or '' }}">
       </label>
-      <button type="submit">Save App Settings</button>
+      <div class="inline-form">
+        <button type="submit">Save App Settings</button>
+      </div>
+    </form>
+    <form method="post" action="/settings/telegram/test" class="inline-form" style="margin-top: 0.75rem;">
+      <button type="submit">Send Test Telegram Message</button>
     </form>
   </article>
 </section>
 {% endblock %}
-

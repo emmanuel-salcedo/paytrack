@@ -25,6 +25,7 @@ from app.services.cycle_views_service import get_cycle_snapshot
 from app.services.history_service import HistoryFilters, list_occurrence_history
 from app.services.notifications_service import (
     NotificationsValidationError,
+    create_in_app_notification,
     get_unread_notifications_count,
     list_notifications,
     mark_all_notifications_read,
@@ -218,6 +219,17 @@ def _render_payments_page(
     )
 
 
+def _render_upcoming_page(request: Request, db: Session):
+    return templates.TemplateResponse(
+        request,
+        "upcoming.html",
+        {
+            "next_cycle_snapshot": get_cycle_snapshot(db, today=date.today(), which="next"),
+            "notifications_unread_count": get_unread_notifications_count(db),
+        },
+    )
+
+
 @web_router.get("/")
 def root_redirect() -> RedirectResponse:
     return RedirectResponse(url="/dashboard", status_code=307)
@@ -234,6 +246,12 @@ def dashboard_page(request: Request, db: Session = Depends(get_db_session)):
 def payments_page(request: Request, db: Session = Depends(get_db_session)):
     run_generate_occurrences_once_per_day_in_session_if_ready(db, today=date.today())
     return _render_payments_page(request, db)
+
+
+@web_router.get("/upcoming")
+def upcoming_page(request: Request, db: Session = Depends(get_db_session)):
+    run_generate_occurrences_once_per_day_in_session_if_ready(db, today=date.today())
+    return _render_upcoming_page(request, db)
 
 
 def _render_interactive_panels(
@@ -334,6 +352,26 @@ def _render_notifications_page(
     )
 
 
+def _notify_best_effort(
+    db: Session,
+    *,
+    type: str,
+    title: str,
+    body: str,
+    occurrence_id: int | None = None,
+) -> None:
+    try:
+        create_in_app_notification(
+            db,
+            type=type,
+            title=title,
+            body=body,
+            occurrence_id=occurrence_id,
+        )
+    except Exception:
+        db.rollback()
+
+
 @web_router.post("/payments")
 def create_payment_web(
     request: Request,
@@ -370,6 +408,7 @@ def create_payment_web(
                 priority=parsed.priority,
             ),
         )
+        _notify_best_effort(db, type="payment_created", title="Payment Added", body=f"{parsed.name} was added.")
         return _render_interactive_panels(request, db, action_notice="Payment added.")
     except (ValueError, InvalidOperation) as exc:
         return _render_interactive_panels(request, db, payment_error=str(exc), action_error="Payment create failed.")
@@ -411,6 +450,7 @@ def create_payment_web_page(
                 priority=parsed.priority,
             ),
         )
+        _notify_best_effort(db, type="payment_created", title="Payment Added", body=f"{parsed.name} was added.")
         return _render_payments_page_shell(request, db, action_notice="Payment added.")
     except ValueError as exc:
         return _render_payments_page_shell(request, db, action_error=str(exc))
@@ -496,6 +536,13 @@ def mark_paid_web(
             amount_paid=parsed_amount,
             paid_date=parsed_paid_date,
         )
+        _notify_best_effort(
+            db,
+            type="occurrence_completed",
+            title="Payment Marked Paid",
+            body=f"Occurrence #{occurrence_id} marked paid.",
+            occurrence_id=occurrence_id,
+        )
         return _render_interactive_panels(request, db, action_notice="Occurrence marked paid.")
     except (ActionValidationError, InvalidOperation, ValueError) as exc:
         return _render_interactive_panels(request, db, action_error=str(exc))
@@ -509,6 +556,13 @@ def undo_mark_paid_web(
 ):
     try:
         undo_mark_paid(db, occurrence_id=occurrence_id)
+        _notify_best_effort(
+            db,
+            type="occurrence_reopened",
+            title="Paid Status Undone",
+            body=f"Occurrence #{occurrence_id} returned to scheduled.",
+            occurrence_id=occurrence_id,
+        )
         return _render_interactive_panels(request, db, action_notice="Paid status undone.")
     except ActionValidationError as exc:
         return _render_interactive_panels(request, db, action_error=str(exc))
@@ -522,6 +576,13 @@ def skip_occurrence_web(
 ):
     try:
         skip_occurrence(db, occurrence_id=occurrence_id)
+        _notify_best_effort(
+            db,
+            type="occurrence_skipped",
+            title="Occurrence Skipped",
+            body=f"Occurrence #{occurrence_id} skipped for this cycle.",
+            occurrence_id=occurrence_id,
+        )
         return _render_interactive_panels(request, db, action_notice="Occurrence skipped for this cycle.")
     except ActionValidationError as exc:
         return _render_interactive_panels(request, db, action_error=str(exc))
@@ -537,6 +598,12 @@ def mark_paid_off_web(
     try:
         resolved_date = date.fromisoformat(paid_off_date) if paid_off_date.strip() else date.today()
         result = mark_payment_paid_off(db, payment_id=payment_id, paid_off_date=resolved_date)
+        _notify_best_effort(
+            db,
+            type="payment_paid_off",
+            title="Payment Marked Paid Off",
+            body=f"Payment #{payment_id} marked paid off. Canceled {result.canceled_occurrences_count} future occurrences.",
+        )
         return _render_interactive_panels(
             request,
             db,
@@ -554,6 +621,12 @@ def reactivate_payment_web(
 ):
     try:
         result = reactivate_payment(db, payment_id=payment_id, today=date.today())
+        _notify_best_effort(
+            db,
+            type="payment_reactivated",
+            title="Payment Reactivated",
+            body=f"Payment #{payment_id} reactivated with {result.generated_occurrences_count} generated occurrences.",
+        )
         return _render_interactive_panels(
             request,
             db,
@@ -573,6 +646,12 @@ def reactivate_payment_web_page(
 ):
     try:
         result = reactivate_payment(db, payment_id=payment_id, today=date.today())
+        _notify_best_effort(
+            db,
+            type="payment_reactivated",
+            title="Payment Reactivated",
+            body=f"Payment #{payment_id} reactivated with {result.generated_occurrences_count} generated occurrences.",
+        )
         return _render_payments_page_shell(
             request,
             db,
@@ -615,6 +694,12 @@ def update_payment_web(
             payment_id=payment_id,
             data=parsed,
             today=date.today(),
+        )
+        _notify_best_effort(
+            db,
+            type="payment_updated",
+            title="Payment Updated",
+            body=f"Payment #{payment_id} updated. Rebuilt {result.generated_occurrences_count} future occurrences.",
         )
         return _render_interactive_panels(
             request,
@@ -667,6 +752,12 @@ def update_payment_web_page(
             data=parsed,
             today=date.today(),
         )
+        _notify_best_effort(
+            db,
+            type="payment_updated",
+            title="Payment Updated",
+            body=f"Payment #{payment_id} updated. Rebuilt {result.generated_occurrences_count} future occurrences.",
+        )
         return _render_payments_page_shell(
             request,
             db,
@@ -692,6 +783,12 @@ def mark_paid_off_web_page(
     try:
         resolved_date = date.fromisoformat(paid_off_date) if paid_off_date.strip() else date.today()
         result = mark_payment_paid_off(db, payment_id=payment_id, paid_off_date=resolved_date)
+        _notify_best_effort(
+            db,
+            type="payment_paid_off",
+            title="Payment Marked Paid Off",
+            body=f"Payment #{payment_id} marked paid off. Canceled {result.canceled_occurrences_count} future occurrences.",
+        )
         return _render_payments_page_shell(
             request,
             db,
@@ -840,6 +937,34 @@ def update_app_settings_web(
             settings_error=str(exc),
             app_settings_errors={"daily_summary_time": str(exc)},
         )
+
+
+@web_router.post("/settings/telegram/test")
+def send_test_telegram_message_web(
+    request: Request,
+    db: Session = Depends(get_db_session),
+):
+    _, app_settings = get_or_create_settings_rows(db)
+    if not app_settings.telegram_enabled:
+        return _render_settings_page(request, db, settings_error="Telegram is disabled.")
+    if not app_settings.telegram_bot_token or not app_settings.telegram_chat_id:
+        return _render_settings_page(
+            request,
+            db,
+            settings_error="Telegram bot token and chat ID are required to send a test message.",
+        )
+
+    _notify_best_effort(
+        db,
+        type="telegram_test",
+        title="Telegram Test Requested",
+        body="Telegram test message simulated locally (external integration pending).",
+    )
+    return _render_settings_page(
+        request,
+        db,
+        settings_notice="Telegram test message simulated locally (external integration pending).",
+    )
 
 
 @web_router.get("/notifications")

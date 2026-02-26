@@ -273,13 +273,16 @@ def test_web_htmx_payments_and_generation_panels(tmp_path) -> None:
             assert "Next Cycle Preview" in home.text
 
             dashboard_page = client.get("/dashboard")
+            upcoming_page = client.get("/upcoming")
             payments_page = client.get("/payments")
             settings_page = client.get("/settings")
             notifications_page = client.get("/notifications")
             assert dashboard_page.status_code == 200
+            assert upcoming_page.status_code == 200
             assert payments_page.status_code == 200
             assert settings_page.status_code == 200
             assert notifications_page.status_code == 200
+            assert "Next Pay Cycle Preview" in upcoming_page.text
             assert "Manage Payments" in payments_page.text
             assert "Settings" in settings_page.text
             assert "Notifications" in notifications_page.text
@@ -471,6 +474,12 @@ def test_web_htmx_payments_and_generation_panels(tmp_path) -> None:
             )
             assert guarded_second.status_code == 200
             assert "Guard blocked duplicate run" in guarded_second.text
+
+            notifications_after_actions = client.get("/notifications")
+            assert notifications_after_actions.status_code == 200
+            assert "Payment Added" in notifications_after_actions.text
+            assert "Payment Marked Paid Off" in notifications_after_actions.text
+            assert "Payment Reactivated" in notifications_after_actions.text
     finally:
         app.dependency_overrides.clear()
 
@@ -508,6 +517,10 @@ def test_settings_and_notifications_pages_are_db_backed(tmp_path) -> None:
             assert update_app.status_code == 200
             assert "App settings updated." in update_app.text
 
+            test_telegram = client.post("/settings/telegram/test")
+            assert test_telegram.status_code == 200
+            assert "Telegram test message simulated locally" in test_telegram.text
+
             bad_settings = client.post(
                 "/settings/app",
                 data={"due_soon_days": "-1", "daily_summary_time": "bad"},
@@ -528,8 +541,9 @@ def test_settings_and_notifications_pages_are_db_backed(tmp_path) -> None:
             notifications_page = client.get("/notifications")
             assert notifications_page.status_code == 200
             assert "Notifications Center" in notifications_page.text
-            assert "Unread: 2" in notifications_page.text
+            assert "Unread: 3" in notifications_page.text
             assert "nav-badge" in notifications_page.text
+            assert "Telegram Test Requested" in notifications_page.text
 
             mark_one = client.post("/notifications/1/read")
             assert mark_one.status_code == 200
@@ -537,7 +551,65 @@ def test_settings_and_notifications_pages_are_db_backed(tmp_path) -> None:
 
             mark_all = client.post("/notifications/mark-all-read")
             assert mark_all.status_code == 200
-            assert "Marked 1 notifications read." in mark_all.text
+            assert "Marked 2 notifications read." in mark_all.text
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_settings_api_endpoints_and_telegram_test(tmp_path) -> None:
+    SessionLocal = _test_session_factory(tmp_path)
+
+    def override_get_db():
+        yield from _override_db(SessionLocal)
+
+    app.dependency_overrides[get_db_session] = override_get_db
+    try:
+        with TestClient(app) as client:
+            settings_get = client.get("/api/settings")
+            assert settings_get.status_code == 200
+            payload = settings_get.json()
+            assert payload["pay_schedule"]["anchor_payday_date"] == "2026-01-15"
+            assert payload["app_settings"]["telegram_enabled"] is False
+
+            bad_telegram_test = client.post("/api/settings/telegram/test")
+            assert bad_telegram_test.status_code == 400
+            assert bad_telegram_test.json()["detail"] == "Telegram is disabled."
+
+            update_schedule = client.post(
+                "/api/settings/pay-schedule",
+                json={"anchor_payday_date": "2026-01-29", "timezone": "America/Los_Angeles"},
+            )
+            assert update_schedule.status_code == 200
+            assert update_schedule.json()["anchor_payday_date"] == "2026-01-29"
+
+            update_app = client.post(
+                "/api/settings/app",
+                json={
+                    "due_soon_days": 6,
+                    "daily_summary_time": "08:30",
+                    "telegram_enabled": True,
+                    "telegram_bot_token": "bot-token",
+                    "telegram_chat_id": "chat-1",
+                },
+            )
+            assert update_app.status_code == 200
+            assert update_app.json()["telegram_enabled"] is True
+
+            bad_app = client.post(
+                "/api/settings/app",
+                json={"due_soon_days": 1, "daily_summary_time": "invalid"},
+            )
+            assert bad_app.status_code == 400
+            assert "HH:MM" in bad_app.json()["detail"]
+
+            ok_telegram_test = client.post("/api/settings/telegram/test")
+            assert ok_telegram_test.status_code == 200
+            assert ok_telegram_test.json()["sent"] is True
+            assert ok_telegram_test.json()["simulated"] is True
+
+            notifications_page = client.get("/notifications")
+            assert notifications_page.status_code == 200
+            assert "Telegram Test Requested" in notifications_page.text
     finally:
         app.dependency_overrides.clear()
 

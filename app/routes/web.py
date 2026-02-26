@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
@@ -23,12 +23,27 @@ from app.services.actions_service import (
 )
 from app.services.cycle_views_service import get_cycle_snapshot
 from app.services.history_service import HistoryFilters, list_occurrence_history
+from app.services.notifications_service import (
+    NotificationsValidationError,
+    get_unread_notifications_count,
+    list_notifications,
+    mark_all_notifications_read,
+    mark_notification_read,
+)
 from app.services.occurrence_generation import (
     generate_occurrences_ahead,
     run_generate_occurrences_once_per_day_in_session_if_ready,
     run_generate_occurrences_once_per_day,
 )
 from app.services.payments_service import CreatePaymentInput, create_payment, list_payments
+from app.services.settings_service import (
+    SettingsValidationError,
+    UpdateAppSettingsInput,
+    UpdatePayScheduleInput,
+    get_or_create_settings_rows,
+    update_app_settings,
+    update_pay_schedule,
+)
 
 templates = Jinja2Templates(directory=str(Path(__file__).resolve().parents[1] / "templates"))
 web_router = APIRouter(tags=["web"])
@@ -52,12 +67,14 @@ def _build_dashboard_context(
     payments = list_payments(db)
     current_cycle_snapshot = get_cycle_snapshot(db, today=date.today(), which="current")
     next_cycle_snapshot = get_cycle_snapshot(db, today=date.today(), which="next")
+    notifications_unread_count = get_unread_notifications_count(db)
     return {
         "schedule": schedule,
         "app_settings": app_settings,
         "payments": payments,
         "current_cycle_snapshot": current_cycle_snapshot,
         "next_cycle_snapshot": next_cycle_snapshot,
+        "notifications_unread_count": notifications_unread_count,
         "payment_error": payment_error,
         "payment_form_errors": payment_form_errors or {},
         "payment_form_values": payment_form_values
@@ -74,6 +91,44 @@ def _build_dashboard_context(
         "generation_state": generation_state,
         "action_notice": action_notice,
         "action_error": action_error,
+    }
+
+
+def _build_payments_only_context(
+    db: Session,
+    *,
+    payment_error: str | None = None,
+    payment_form_errors: dict[str, str] | None = None,
+    payment_form_values: dict[str, str] | None = None,
+    payment_edit_target_id: int | None = None,
+    payment_edit_errors: dict[str, str] | None = None,
+    payment_edit_values: dict[str, str] | None = None,
+    action_notice: str | None = None,
+    action_error: str | None = None,
+) -> dict[str, object]:
+    return {
+        "payments": list_payments(db),
+        "payment_error": payment_error,
+        "payment_form_errors": payment_form_errors or {},
+        "payment_form_values": payment_form_values
+        or {
+            "name": "",
+            "expected_amount": "",
+            "initial_due_date": "",
+            "recurrence_type": "monthly",
+            "priority": "",
+        },
+        "payment_edit_target_id": payment_edit_target_id,
+        "payment_edit_errors": payment_edit_errors or {},
+        "payment_edit_values": payment_edit_values or {},
+        "action_notice": action_notice,
+        "action_error": action_error,
+        "notifications_unread_count": get_unread_notifications_count(db),
+        "payments_panel_target": "#payments-page-shell",
+        "payments_create_path": "/payments/page/create",
+        "payments_paid_off_path_prefix": "/payments/page",
+        "payments_reactivate_path_prefix": "/payments/page",
+        "payments_update_path_prefix": "/payments/page",
     }
 
 
@@ -159,7 +214,7 @@ def _render_payments_page(
     return templates.TemplateResponse(
         request,
         "payments.html",
-        _build_dashboard_context(db, **context_overrides),
+        _build_payments_only_context(db, **context_overrides),
     )
 
 
@@ -223,6 +278,62 @@ def _render_generation_panel(request: Request, generation_state: dict[str, objec
     )
 
 
+def _render_payments_page_shell(
+    request: Request,
+    db: Session,
+    **context_overrides,
+):
+    return templates.TemplateResponse(
+        request,
+        "_payments_page_shell.html",
+        _build_payments_only_context(db, **context_overrides),
+    )
+
+
+def _render_settings_page(
+    request: Request,
+    db: Session,
+    *,
+    settings_notice: str | None = None,
+    settings_error: str | None = None,
+    pay_schedule_errors: dict[str, str] | None = None,
+    app_settings_errors: dict[str, str] | None = None,
+):
+    pay_schedule, app_settings = get_or_create_settings_rows(db)
+    return templates.TemplateResponse(
+        request,
+        "settings.html",
+        {
+            "pay_schedule": pay_schedule,
+            "app_settings": app_settings,
+            "settings_notice": settings_notice,
+            "settings_error": settings_error,
+            "pay_schedule_errors": pay_schedule_errors or {},
+            "app_settings_errors": app_settings_errors or {},
+            "notifications_unread_count": get_unread_notifications_count(db),
+        },
+    )
+
+
+def _render_notifications_page(
+    request: Request,
+    db: Session,
+    *,
+    notifications_notice: str | None = None,
+    notifications_error: str | None = None,
+):
+    return templates.TemplateResponse(
+        request,
+        "notifications.html",
+        {
+            "notifications": list_notifications(db),
+            "notifications_unread_count": get_unread_notifications_count(db),
+            "notifications_notice": notifications_notice,
+            "notifications_error": notifications_error,
+        },
+    )
+
+
 @web_router.post("/payments")
 def create_payment_web(
     request: Request,
@@ -262,6 +373,47 @@ def create_payment_web(
         return _render_interactive_panels(request, db, action_notice="Payment added.")
     except (ValueError, InvalidOperation) as exc:
         return _render_interactive_panels(request, db, payment_error=str(exc), action_error="Payment create failed.")
+
+
+@web_router.post("/payments/page/create")
+def create_payment_web_page(
+    request: Request,
+    name: str = Form(...),
+    expected_amount: str = Form(...),
+    initial_due_date: str = Form(...),
+    recurrence_type: str = Form(...),
+    priority: str = Form(""),
+    db: Session = Depends(get_db_session),
+):
+    parsed, field_errors, field_values = _parse_payment_form_fields(
+        name=name,
+        expected_amount=expected_amount,
+        initial_due_date=initial_due_date,
+        recurrence_type=recurrence_type,
+        priority=priority,
+    )
+    if parsed is None:
+        return _render_payments_page_shell(
+            request,
+            db,
+            payment_form_errors=field_errors,
+            payment_form_values=field_values,
+            action_error="Payment create failed.",
+        )
+    try:
+        create_payment(
+            db,
+            CreatePaymentInput(
+                name=parsed.name,
+                expected_amount=parsed.expected_amount,
+                initial_due_date=parsed.initial_due_date,
+                recurrence_type=parsed.recurrence_type,
+                priority=parsed.priority,
+            ),
+        )
+        return _render_payments_page_shell(request, db, action_notice="Payment added.")
+    except ValueError as exc:
+        return _render_payments_page_shell(request, db, action_error=str(exc))
 
 
 @web_router.post("/admin/run-generation")
@@ -413,6 +565,23 @@ def reactivate_payment_web(
         return _render_interactive_panels(request, db, action_error=str(exc))
 
 
+@web_router.post("/payments/page/{payment_id}/reactivate")
+def reactivate_payment_web_page(
+    request: Request,
+    payment_id: int,
+    db: Session = Depends(get_db_session),
+):
+    try:
+        result = reactivate_payment(db, payment_id=payment_id, today=date.today())
+        return _render_payments_page_shell(
+            request,
+            db,
+            action_notice=f"Payment reactivated. Generated {result.generated_occurrences_count} future occurrences.",
+        )
+    except ActionValidationError as exc:
+        return _render_payments_page_shell(request, db, action_error=str(exc))
+
+
 @web_router.post("/payments/{payment_id}/update")
 def update_payment_web(
     request: Request,
@@ -440,7 +609,6 @@ def update_payment_web(
             payment_edit_values=field_values,
             action_error="Payment update failed.",
         )
-
     try:
         result = update_payment_and_rebuild_future_scheduled(
             db,
@@ -463,6 +631,74 @@ def update_payment_web(
             payment_edit_values=field_values,
             action_error=str(exc),
         )
+
+
+@web_router.post("/payments/page/{payment_id}/update")
+def update_payment_web_page(
+    request: Request,
+    payment_id: int,
+    name: str = Form(...),
+    expected_amount: str = Form(...),
+    initial_due_date: str = Form(...),
+    recurrence_type: str = Form(...),
+    priority: str = Form(""),
+    db: Session = Depends(get_db_session),
+):
+    parsed, field_errors, field_values = _parse_payment_form_fields(
+        name=name,
+        expected_amount=expected_amount,
+        initial_due_date=initial_due_date,
+        recurrence_type=recurrence_type,
+        priority=priority,
+    )
+    if parsed is None:
+        return _render_payments_page_shell(
+            request,
+            db,
+            payment_edit_target_id=payment_id,
+            payment_edit_errors=field_errors,
+            payment_edit_values=field_values,
+            action_error="Payment update failed.",
+        )
+    try:
+        result = update_payment_and_rebuild_future_scheduled(
+            db,
+            payment_id=payment_id,
+            data=parsed,
+            today=date.today(),
+        )
+        return _render_payments_page_shell(
+            request,
+            db,
+            action_notice=f"Payment updated. Rebuilt {result.generated_occurrences_count} future scheduled occurrences.",
+        )
+    except ActionValidationError as exc:
+        return _render_payments_page_shell(
+            request,
+            db,
+            payment_edit_target_id=payment_id,
+            payment_edit_values=field_values,
+            action_error=str(exc),
+        )
+
+
+@web_router.post("/payments/page/{payment_id}/paid-off")
+def mark_paid_off_web_page(
+    request: Request,
+    payment_id: int,
+    paid_off_date: str = Form(""),
+    db: Session = Depends(get_db_session),
+):
+    try:
+        resolved_date = date.fromisoformat(paid_off_date) if paid_off_date.strip() else date.today()
+        result = mark_payment_paid_off(db, payment_id=payment_id, paid_off_date=resolved_date)
+        return _render_payments_page_shell(
+            request,
+            db,
+            action_notice=f"Payment marked paid off. Canceled {result.canceled_occurrences_count} future occurrences.",
+        )
+    except (ActionValidationError, ValueError) as exc:
+        return _render_payments_page_shell(request, db, action_error=str(exc))
 
 
 @web_router.get("/history")
@@ -488,6 +724,7 @@ def history_page(
         "history.html",
         {
             "history_rows": rows,
+            "notifications_unread_count": get_unread_notifications_count(db),
             "filters": {
                 "status": status or "",
                 "start_date": start_date or "",
@@ -499,26 +736,144 @@ def history_page(
 
 
 @web_router.get("/settings")
-def settings_page(request: Request):
-    return templates.TemplateResponse(
+def settings_page(
+    request: Request,
+    db: Session = Depends(get_db_session),
+    settings_notice: str | None = None,
+    settings_error: str | None = None,
+    pay_schedule_errors: dict[str, str] | None = None,
+    app_settings_errors: dict[str, str] | None = None,
+):
+    return _render_settings_page(
         request,
-        "placeholder_page.html",
-        {
-            "page_title": "Settings",
-            "page_tag": "Phase 4",
-            "page_description": "Notification defaults, Telegram configuration, timezone, and pay schedule settings will move here.",
-        },
+        db,
+        settings_notice=settings_notice,
+        settings_error=settings_error,
+        pay_schedule_errors=pay_schedule_errors,
+        app_settings_errors=app_settings_errors,
     )
+
+
+@web_router.post("/settings/pay-schedule")
+def update_pay_schedule_web(
+    request: Request,
+    anchor_payday_date: str = Form(...),
+    timezone: str = Form(...),
+    db: Session = Depends(get_db_session),
+):
+    errors: dict[str, str] = {}
+    try:
+        parsed_anchor = date.fromisoformat(anchor_payday_date)
+    except ValueError:
+        errors["anchor_payday_date"] = "Enter a valid date."
+        parsed_anchor = date.today()
+    if not timezone.strip():
+        errors["timezone"] = "Timezone is required."
+
+    if errors:
+        return _render_settings_page(
+            request,
+            db,
+            settings_error="Pay schedule update failed.",
+            pay_schedule_errors=errors,
+        )
+    try:
+        update_pay_schedule(
+            db,
+            UpdatePayScheduleInput(anchor_payday_date=parsed_anchor, timezone=timezone),
+        )
+        return _render_settings_page(request, db, settings_notice="Pay schedule updated.")
+    except SettingsValidationError as exc:
+        return _render_settings_page(
+            request,
+            db,
+            settings_error=str(exc),
+            pay_schedule_errors={"timezone": str(exc)},
+        )
+
+
+@web_router.post("/settings/app")
+def update_app_settings_web(
+    request: Request,
+    due_soon_days: str = Form(...),
+    daily_summary_time: str = Form(...),
+    telegram_enabled: str | None = Form(None),
+    telegram_bot_token: str = Form(""),
+    telegram_chat_id: str = Form(""),
+    db: Session = Depends(get_db_session),
+):
+    errors: dict[str, str] = {}
+    try:
+        due_soon = int(due_soon_days)
+        if due_soon < 0:
+            raise ValueError
+    except ValueError:
+        errors["due_soon_days"] = "Enter a non-negative whole number."
+        due_soon = 5
+
+    if not daily_summary_time.strip():
+        errors["daily_summary_time"] = "Daily summary time is required."
+
+    if errors:
+        return _render_settings_page(
+            request,
+            db,
+            settings_error="App settings update failed.",
+            app_settings_errors=errors,
+        )
+    try:
+        update_app_settings(
+            db,
+            UpdateAppSettingsInput(
+                due_soon_days=due_soon,
+                daily_summary_time=daily_summary_time,
+                telegram_enabled=telegram_enabled is not None,
+                telegram_bot_token=telegram_bot_token,
+                telegram_chat_id=telegram_chat_id,
+            ),
+        )
+        return _render_settings_page(request, db, settings_notice="App settings updated.")
+    except SettingsValidationError as exc:
+        return _render_settings_page(
+            request,
+            db,
+            settings_error=str(exc),
+            app_settings_errors={"daily_summary_time": str(exc)},
+        )
 
 
 @web_router.get("/notifications")
-def notifications_page(request: Request):
-    return templates.TemplateResponse(
+def notifications_page(
+    request: Request,
+    db: Session = Depends(get_db_session),
+    notifications_notice: str | None = None,
+    notifications_error: str | None = None,
+):
+    return _render_notifications_page(
         request,
-        "placeholder_page.html",
-        {
-            "page_title": "Notifications",
-            "page_tag": "Phase 4",
-            "page_description": "In-app notifications center with unread state and filters will live here.",
-        },
+        db,
+        notifications_notice=notifications_notice,
+        notifications_error=notifications_error,
     )
+
+
+@web_router.post("/notifications/{notification_id}/read")
+def mark_notification_read_web(
+    request: Request,
+    notification_id: int,
+    db: Session = Depends(get_db_session),
+):
+    try:
+        mark_notification_read(db, notification_id=notification_id, now=datetime.now())
+        return _render_notifications_page(request, db, notifications_notice="Notification marked read.")
+    except NotificationsValidationError as exc:
+        return _render_notifications_page(request, db, notifications_error=str(exc))
+
+
+@web_router.post("/notifications/mark-all-read")
+def mark_all_notifications_read_web(
+    request: Request,
+    db: Session = Depends(get_db_session),
+):
+    count = mark_all_notifications_read(db, now=datetime.now())
+    return _render_notifications_page(request, db, notifications_notice=f"Marked {count} notifications read.")

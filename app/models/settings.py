@@ -23,4 +23,5 @@ class AppSettings(TimestampMixin, Base):
     due_soon_days: Mapped[int] = mapped_column(Integer, nullable=False, default=5)
     daily_summary_time: Mapped[str] = mapped_column(String(5), nullable=False, default="07:00")
     telegram_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-
+    telegram_bot_token: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    telegram_chat_id: Mapped[str | None] = mapped_column(String(255), nullable=True)

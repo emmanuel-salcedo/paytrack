@@ -1,9 +1,15 @@
+{% set payments_panel_target = payments_panel_target|default('#interactive-panels') %}
+{% set payments_create_path = payments_create_path|default('/payments') %}
+{% set payments_paid_off_path_prefix = payments_paid_off_path_prefix|default('/payments') %}
+{% set payments_reactivate_path_prefix = payments_reactivate_path_prefix|default('/payments') %}
+{% set payments_update_path_prefix = payments_update_path_prefix|default('/payments') %}
+
 <div id="payments-panel">
   <article class="card">
     <h2>Payments (Minimal CRUD)</h2>
     <form
-      hx-post="/payments"
-      hx-target="#interactive-panels"
+      hx-post="{{ payments_create_path }}"
+      hx-target="{{ payments_panel_target }}"
       hx-swap="outerHTML"
       method="post"
       class="stack"
@@ -72,8 +78,8 @@
                 {% if payment.is_active %}
                   <div class="inline-form">
                     <form
-                      hx-post="/payments/{{ payment.id }}/paid-off"
-                      hx-target="#interactive-panels"
+                      hx-post="{{ payments_paid_off_path_prefix }}/{{ payment.id }}/paid-off"
+                      hx-target="{{ payments_panel_target }}"
                       hx-swap="outerHTML"
                       method="post"
                       class="inline-form"
@@ -83,8 +89,8 @@
                     <details {% if payment_edit_target_id == payment.id and payment_edit_errors %}open{% endif %}>
                       <summary>Edit Payment</summary>
                       <form
-                        hx-post="/payments/{{ payment.id }}/update"
-                        hx-target="#interactive-panels"
+                        hx-post="{{ payments_update_path_prefix }}/{{ payment.id }}/update"
+                        hx-target="{{ payments_panel_target }}"
                         hx-swap="outerHTML"
                         method="post"
                         class="stack payment-edit-form"
@@ -129,8 +135,8 @@
                     <details>
                       <summary>Paid Off Date</summary>
                       <form
-                        hx-post="/payments/{{ payment.id }}/paid-off"
-                        hx-target="#interactive-panels"
+                        hx-post="{{ payments_paid_off_path_prefix }}/{{ payment.id }}/paid-off"
+                        hx-target="{{ payments_panel_target }}"
                         hx-swap="outerHTML"
                         method="post"
                         class="stack"
@@ -145,8 +151,8 @@
                   </div>
                 {% else %}
                   <form
-                    hx-post="/payments/{{ payment.id }}/reactivate"
-                    hx-target="#interactive-panels"
+                    hx-post="{{ payments_reactivate_path_prefix }}/{{ payment.id }}/reactivate"
+                    hx-target="{{ payments_panel_target }}"
                     hx-swap="outerHTML"
                     method="post"
                     class="inline-form"

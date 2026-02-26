@@ -10,6 +10,7 @@ import app.models  # noqa: F401
 from app.db import get_db_session
 from app.main import app
 from app.models.base import Base
+from app.models.notifications import Notification
 
 
 def _test_session_factory(tmp_path):
@@ -282,6 +283,7 @@ def test_web_htmx_payments_and_generation_panels(tmp_path) -> None:
             assert "Manage Payments" in payments_page.text
             assert "Settings" in settings_page.text
             assert "Notifications" in notifications_page.text
+            assert "Dashboard" in payments_page.text
 
             create_resp = client.post(
                 "/payments",
@@ -297,6 +299,20 @@ def test_web_htmx_payments_and_generation_panels(tmp_path) -> None:
             assert "Gym" in create_resp.text
             assert "interactive-panels" in create_resp.text
             assert "payments-panel" in create_resp.text
+
+            create_resp_page = client.post(
+                "/payments/page/create",
+                data={
+                    "name": "Water",
+                    "expected_amount": "40.00",
+                    "initial_due_date": "2026-01-10",
+                    "recurrence_type": "monthly",
+                },
+                headers={"HX-Request": "true"},
+            )
+            assert create_resp_page.status_code == 200
+            assert "payments-page-shell" in create_resp_page.text
+            assert "Water" in create_resp_page.text
 
             invalid_create = client.post(
                 "/payments",
@@ -359,6 +375,14 @@ def test_web_htmx_payments_and_generation_panels(tmp_path) -> None:
             assert "Payment marked paid off." in paid_off_web.text
             assert "Archived" in paid_off_web.text
 
+            paid_off_page = client.post(
+                f"/payments/page/{gym_payment['id']}/paid-off",
+                data={},
+                headers={"HX-Request": "true"},
+            )
+            assert paid_off_page.status_code == 200
+            assert "payments-page-shell" in paid_off_page.text
+
             reactivate_web = client.post(
                 f"/payments/{gym_payment['id']}/reactivate",
                 data={},
@@ -366,6 +390,14 @@ def test_web_htmx_payments_and_generation_panels(tmp_path) -> None:
             )
             assert reactivate_web.status_code == 200
             assert "Payment reactivated." in reactivate_web.text
+
+            reactivate_page = client.post(
+                f"/payments/page/{gym_payment['id']}/reactivate",
+                data={},
+                headers={"HX-Request": "true"},
+            )
+            assert reactivate_page.status_code == 200
+            assert "payments-page-shell" in reactivate_page.text
 
             edit_invalid_web = client.post(
                 f"/payments/{gym_payment['id']}/update",
@@ -380,6 +412,20 @@ def test_web_htmx_payments_and_generation_panels(tmp_path) -> None:
             assert edit_invalid_web.status_code == 200
             assert "Payment update failed." in edit_invalid_web.text
             assert "Name is required." in edit_invalid_web.text
+
+            edit_invalid_page = client.post(
+                f"/payments/page/{gym_payment['id']}/update",
+                data={
+                    "name": "",
+                    "expected_amount": "x",
+                    "initial_due_date": "bad",
+                    "recurrence_type": "oops",
+                },
+                headers={"HX-Request": "true"},
+            )
+            assert edit_invalid_page.status_code == 200
+            assert "payments-page-shell" in edit_invalid_page.text
+            assert "Payment update failed." in edit_invalid_page.text
 
             edit_valid_web = client.post(
                 f"/payments/{gym_payment['id']}/update",
@@ -396,6 +442,20 @@ def test_web_htmx_payments_and_generation_panels(tmp_path) -> None:
             assert "Payment updated." in edit_valid_web.text
             assert "Gym Plus" in edit_valid_web.text
 
+            edit_valid_page = client.post(
+                f"/payments/page/{gym_payment['id']}/update",
+                data={
+                    "name": "Gym Ultra",
+                    "expected_amount": "35.00",
+                    "initial_due_date": "2026-01-10",
+                    "recurrence_type": "weekly",
+                },
+                headers={"HX-Request": "true"},
+            )
+            assert edit_valid_page.status_code == 200
+            assert "payments-page-shell" in edit_valid_page.text
+            assert "Gym Ultra" in edit_valid_page.text
+
             guarded_first = client.post(
                 "/admin/run-generation-once-today",
                 data={"horizon_days": "30"},
@@ -411,6 +471,73 @@ def test_web_htmx_payments_and_generation_panels(tmp_path) -> None:
             )
             assert guarded_second.status_code == 200
             assert "Guard blocked duplicate run" in guarded_second.text
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_settings_and_notifications_pages_are_db_backed(tmp_path) -> None:
+    SessionLocal = _test_session_factory(tmp_path)
+
+    def override_get_db():
+        yield from _override_db(SessionLocal)
+
+    app.dependency_overrides[get_db_session] = override_get_db
+    try:
+        with TestClient(app) as client:
+            settings_before = client.get("/settings")
+            assert settings_before.status_code == 200
+            assert "App Settings" in settings_before.text
+
+            update_schedule = client.post(
+                "/settings/pay-schedule",
+                data={"anchor_payday_date": "2026-01-29", "timezone": "America/Los_Angeles"},
+            )
+            assert update_schedule.status_code == 200
+            assert "Pay schedule updated." in update_schedule.text
+
+            update_app = client.post(
+                "/settings/app",
+                data={
+                    "due_soon_days": "7",
+                    "daily_summary_time": "08:15",
+                    "telegram_enabled": "1",
+                    "telegram_bot_token": "bot-token",
+                    "telegram_chat_id": "chat-1",
+                },
+            )
+            assert update_app.status_code == 200
+            assert "App settings updated." in update_app.text
+
+            bad_settings = client.post(
+                "/settings/app",
+                data={"due_soon_days": "-1", "daily_summary_time": "bad"},
+            )
+            assert bad_settings.status_code == 200
+            assert "App settings update failed." in bad_settings.text
+
+            # Seed notifications directly via the test DB session
+            with SessionLocal() as session:
+                session.add_all(
+                    [
+                        Notification(type="due_soon", title="Due Soon", body="Water bill due", is_read=False),
+                        Notification(type="overdue", title="Overdue", body="Gym overdue", is_read=False),
+                    ]
+                )
+                session.commit()
+
+            notifications_page = client.get("/notifications")
+            assert notifications_page.status_code == 200
+            assert "Notifications Center" in notifications_page.text
+            assert "Unread: 2" in notifications_page.text
+            assert "nav-badge" in notifications_page.text
+
+            mark_one = client.post("/notifications/1/read")
+            assert mark_one.status_code == 200
+            assert "Notification marked read." in mark_one.text
+
+            mark_all = client.post("/notifications/mark-all-read")
+            assert mark_all.status_code == 200
+            assert "Marked 1 notifications read." in mark_all.text
     finally:
         app.dependency_overrides.clear()
 

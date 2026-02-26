@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+
+{% block title %}PayTrack | Settings{% endblock %}
+
+{% block content %}
+<section class="hero">
+  <span class="pill">Settings</span>
+  <h1>App Settings</h1>
+  <p class="muted">Configure pay schedule defaults, timezone, notification timing, and Telegram delivery.</p>
+</section>
+
+{% if settings_notice %}
+  <p class="success" role="status">{{ settings_notice }}</p>
+{% endif %}
+{% if settings_error %}
+  <p class="error" role="alert">{{ settings_error }}</p>
+{% endif %}
+
+<section class="grid" aria-label="Settings forms">
+  <article class="card">
+    <h2>Pay Schedule</h2>
+    <form method="post" action="/settings/pay-schedule" class="stack">
+      <label>
+        <span>Anchor Payday Date</span>
+        <input type="date" name="anchor_payday_date" value="{{ pay_schedule.anchor_payday_date }}">
+        {% if pay_schedule_errors.anchor_payday_date %}<small class="field-error">{{ pay_schedule_errors.anchor_payday_date }}</small>{% endif %}
+      </label>
+      <label>
+        <span>Timezone</span>
+        <input type="text" name="timezone" value="{{ pay_schedule.timezone }}" placeholder="America/Los_Angeles">
+        {% if pay_schedule_errors.timezone %}<small class="field-error">{{ pay_schedule_errors.timezone }}</small>{% endif %}
+      </label>
+      <button type="submit">Save Pay Schedule</button>
+    </form>
+  </article>
+
+  <article class="card">
+    <h2>Notifications & Telegram</h2>
+    <form method="post" action="/settings/app" class="stack">
+      <label>
+        <span>Due Soon Days</span>
+        <input type="number" name="due_soon_days" min="0" value="{{ app_settings.due_soon_days }}">
+        {% if app_settings_errors.due_soon_days %}<small class="field-error">{{ app_settings_errors.due_soon_days }}</small>{% endif %}
+      </label>
+      <label>
+        <span>Daily Summary Time (HH:MM)</span>
+        <input type="time" name="daily_summary_time" value="{{ app_settings.daily_summary_time }}">
+        {% if app_settings_errors.daily_summary_time %}<small class="field-error">{{ app_settings_errors.daily_summary_time }}</small>{% endif %}
+      </label>
+      <label>
+        <span>
+          <input type="checkbox" name="telegram_enabled" value="1" {% if app_settings.telegram_enabled %}checked{% endif %}>
+          Telegram Enabled
+        </span>
+      </label>
+      <label>
+        <span>Telegram Bot Token</span>
+        <input type="text" name="telegram_bot_token" value="{{ app_settings.telegram_bot_token or '' }}">
+      </label>
+      <label>
+        <span>Telegram Chat ID</span>
+        <input type="text" name="telegram_chat_id" value="{{ app_settings.telegram_chat_id or '' }}">
+      </label>
+      <button type="submit">Save App Settings</button>
+    </form>
+  </article>
+</section>
+{% endblock %}
+

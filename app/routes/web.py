@@ -11,7 +11,11 @@ from sqlalchemy.orm import Session
 from app.db import get_db_session
 from app.models import AppSettings, PaySchedule
 from app.services.cycle_views_service import get_cycle_snapshot
-from app.services.occurrence_generation import generate_occurrences_ahead, run_generate_occurrences_once_per_day
+from app.services.occurrence_generation import (
+    generate_occurrences_ahead,
+    run_generate_occurrences_once_per_day_in_session_if_ready,
+    run_generate_occurrences_once_per_day,
+)
 from app.services.payments_service import CreatePaymentInput, create_payment, list_payments
 
 templates = Jinja2Templates(directory=str(Path(__file__).resolve().parents[1] / "templates"))
@@ -20,6 +24,8 @@ web_router = APIRouter(tags=["web"])
 
 @web_router.get("/")
 def home(request: Request, db: Session = Depends(get_db_session)):
+    # First-request-of-day fallback: safe to call on every request because job_runs guard de-dupes.
+    run_generate_occurrences_once_per_day_in_session_if_ready(db, today=date.today())
     schedule = db.query(PaySchedule).first()
     app_settings = db.query(AppSettings).first()
     payments = list_payments(db)

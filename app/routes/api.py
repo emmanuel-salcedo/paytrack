@@ -12,7 +12,11 @@ from sqlalchemy.orm import Session
 from app.db import get_db_session
 from app.models.payments import Payment
 from app.services.cycle_views_service import get_cycle_snapshot
-from app.services.occurrence_generation import generate_occurrences_ahead, run_generate_occurrences_once_per_day
+from app.services.occurrence_generation import (
+    generate_occurrences_ahead,
+    run_generate_occurrences_once_per_day_in_session_if_ready,
+    run_generate_occurrences_once_per_day,
+)
 from app.services.payments_service import CreatePaymentInput, create_payment, list_payments
 
 api_router = APIRouter(tags=["api"])
@@ -161,3 +165,38 @@ def next_cycle_snapshot_api(
 ) -> dict[str, object]:
     snapshot = get_cycle_snapshot(db, today=today or date.today(), which="next")
     return _serialize_cycle_snapshot(snapshot)
+
+
+@api_router.post("/admin/ensure-daily-generation")
+def ensure_daily_generation_api(payload: ManualGenerationRequest, db: Session = Depends(get_db_session)) -> dict[str, object]:
+    run_today = payload.today or date.today()
+    guarded = run_generate_occurrences_once_per_day_in_session_if_ready(
+        db,
+        today=run_today,
+        horizon_days=payload.horizon_days,
+    )
+    if guarded is None:
+        return {
+            "trigger": "ensure-daily-generation",
+            "ready": False,
+            "ran": False,
+            "horizon_days": payload.horizon_days,
+        }
+    response: dict[str, object] = {
+        "job_name": guarded.job_name,
+        "run_date": guarded.run_date.isoformat(),
+        "ran": guarded.ran,
+        "horizon_days": payload.horizon_days,
+        "trigger": "ensure-daily-generation",
+        "ready": True,
+    }
+    if guarded.generation_result is not None:
+        response.update(
+            {
+                "generated_count": guarded.generation_result.generated_count,
+                "skipped_existing_count": guarded.generation_result.skipped_existing_count,
+                "range_start": guarded.generation_result.range_start.isoformat(),
+                "range_end": guarded.generation_result.range_end.isoformat(),
+            }
+        )
+    return response

@@ -159,6 +159,19 @@ def run_generate_occurrences_once_per_day(
     )
 
 
+def run_generate_occurrences_once_per_day_in_session_if_ready(
+    session: Session,
+    *,
+    today: date,
+    horizon_days: int = DEFAULT_GENERATION_HORIZON_DAYS,
+) -> GuardedOccurrenceGenerationRunResult | None:
+    inspector = inspect(session.bind)
+    tables = set(inspector.get_table_names())
+    if not {"payments", "occurrences", "job_runs"}.issubset(tables):
+        return None
+    return run_generate_occurrences_once_per_day(session, today=today, horizon_days=horizon_days)
+
+
 def generate_occurrences_ahead_if_ready(
     *,
     today: date,
@@ -178,8 +191,17 @@ def run_generate_occurrences_once_per_day_if_ready(
     horizon_days: int = DEFAULT_GENERATION_HORIZON_DAYS,
 ) -> GuardedOccurrenceGenerationRunResult | None:
     with SessionLocal() as session:
-        inspector = inspect(session.bind)
-        tables = set(inspector.get_table_names())
-        if not {"payments", "occurrences", "job_runs"}.issubset(tables):
-            return None
-        return run_generate_occurrences_once_per_day(session, today=today, horizon_days=horizon_days)
+        return run_generate_occurrences_once_per_day_in_session_if_ready(
+            session,
+            today=today,
+            horizon_days=horizon_days,
+        )
+
+
+def ensure_daily_generation_via_guard_if_ready(
+    *,
+    today: date,
+    horizon_days: int = DEFAULT_GENERATION_HORIZON_DAYS,
+) -> GuardedOccurrenceGenerationRunResult | None:
+    # Thin alias intended for cron or first-request fallback call sites.
+    return run_generate_occurrences_once_per_day_if_ready(today=today, horizon_days=horizon_days)

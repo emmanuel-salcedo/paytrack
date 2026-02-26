@@ -114,6 +114,25 @@ def test_api_payments_create_list_and_manual_generation(tmp_path) -> None:
             assert guarded_second.status_code == 200
             guarded_second_payload = guarded_second.json()
             assert guarded_second_payload["ran"] is False
+
+            ensured_first = client.post(
+                "/api/admin/ensure-daily-generation",
+                json={"today": "2026-01-17", "horizon_days": 60},
+            )
+            assert ensured_first.status_code == 200
+            ensured_first_payload = ensured_first.json()
+            assert ensured_first_payload["trigger"] == "ensure-daily-generation"
+            assert ensured_first_payload["ready"] is True
+            assert ensured_first_payload["ran"] is True
+
+            ensured_second = client.post(
+                "/api/admin/ensure-daily-generation",
+                json={"today": "2026-01-17", "horizon_days": 60},
+            )
+            assert ensured_second.status_code == 200
+            ensured_second_payload = ensured_second.json()
+            assert ensured_second_payload["ready"] is True
+            assert ensured_second_payload["ran"] is False
     finally:
         app.dependency_overrides.clear()
 
@@ -162,7 +181,7 @@ def test_web_htmx_payments_and_generation_panels(tmp_path) -> None:
                 headers={"HX-Request": "true"},
             )
             assert guarded_first.status_code == 200
-            assert "Guarded run executed" in guarded_first.text
+            assert "Guard blocked duplicate run" in guarded_first.text
 
             guarded_second = client.post(
                 "/admin/run-generation-once-today",

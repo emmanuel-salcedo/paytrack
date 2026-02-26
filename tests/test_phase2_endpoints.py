@@ -181,6 +181,42 @@ def test_api_payments_create_list_and_manual_generation(tmp_path) -> None:
                 for row in cycle_with_future_internet_due.json()["occurrences"]
             )
 
+            reactivate = client.post(
+                f"/api/payments/{internet_payment_id}/reactivate",
+                json={"today": "2026-01-16", "horizon_days": 90},
+            )
+            assert reactivate.status_code == 200
+            reactivate_payload = reactivate.json()
+            assert reactivate_payload["payment_id"] == internet_payment_id
+            assert reactivate_payload["generated_occurrences_count"] >= 1
+
+            update_payment = client.post(
+                f"/api/payments/{internet_payment_id}/update",
+                json={
+                    "name": "Internet Premium",
+                    "expected_amount": "95.00",
+                    "initial_due_date": "2026-01-20",
+                    "recurrence_type": "monthly",
+                    "today": "2026-01-20",
+                    "horizon_days": 90,
+                },
+            )
+            assert update_payment.status_code == 200
+            assert update_payment.json()["payment_id"] == internet_payment_id
+
+            payments_after_update = client.get("/api/payments")
+            assert payments_after_update.status_code == 200
+            updated_payment = next(row for row in payments_after_update.json() if row["id"] == internet_payment_id)
+            assert updated_payment["name"] == "Internet Premium"
+            assert updated_payment["expected_amount"] == "95.00"
+
+            cycle_after_update = client.get("/api/cycles/next", params={"today": "2026-02-12"})
+            assert cycle_after_update.status_code == 200
+            assert any(
+                row["payment_name"] == "Internet Premium"
+                for row in cycle_after_update.json()["occurrences"]
+            )
+
             guarded_first = client.post(
                 "/api/admin/run-generation-once-today",
                 json={"today": "2026-01-16", "horizon_days": 60},

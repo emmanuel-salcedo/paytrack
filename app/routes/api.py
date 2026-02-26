@@ -15,8 +15,11 @@ from app.services.actions_service import (
     ActionValidationError,
     mark_occurrence_paid,
     mark_payment_paid_off,
+    reactivate_payment,
     skip_occurrence,
     undo_mark_paid,
+    update_payment_and_rebuild_future_scheduled,
+    UpdatePaymentInput,
 )
 from app.services.cycle_views_service import get_cycle_snapshot
 from app.services.occurrence_generation import (
@@ -72,6 +75,21 @@ class MarkPaidRequest(BaseModel):
 
 class PaidOffRequest(BaseModel):
     paid_off_date: date | None = None
+
+
+class ReactivatePaymentRequest(BaseModel):
+    today: date | None = None
+    horizon_days: int = Field(default=90, ge=1, le=365)
+
+
+class UpdatePaymentRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+    expected_amount: Decimal = Field(ge=0)
+    initial_due_date: date
+    recurrence_type: str
+    priority: int | None = None
+    today: date | None = None
+    horizon_days: int = Field(default=90, ge=1, le=365)
 
 
 def _serialize_cycle_snapshot(snapshot) -> dict[str, object]:
@@ -292,4 +310,55 @@ def paid_off_payment_api(
         "payment_id": result.payment_id,
         "paid_off_date": result.paid_off_date.isoformat(),
         "canceled_occurrences_count": result.canceled_occurrences_count,
+    }
+
+
+@api_router.post("/payments/{payment_id}/reactivate")
+def reactivate_payment_api(
+    payment_id: int,
+    payload: ReactivatePaymentRequest,
+    db: Session = Depends(get_db_session),
+) -> dict[str, object]:
+    try:
+        result = reactivate_payment(
+            db,
+            payment_id=payment_id,
+            today=payload.today or date.today(),
+            horizon_days=payload.horizon_days,
+        )
+    except ActionValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {
+        "payment_id": result.payment_id,
+        "generated_occurrences_count": result.generated_occurrences_count,
+        "skipped_existing_count": result.skipped_existing_count,
+    }
+
+
+@api_router.post("/payments/{payment_id}/update")
+def update_payment_api(
+    payment_id: int,
+    payload: UpdatePaymentRequest,
+    db: Session = Depends(get_db_session),
+) -> dict[str, object]:
+    try:
+        result = update_payment_and_rebuild_future_scheduled(
+            db,
+            payment_id=payment_id,
+            data=UpdatePaymentInput(
+                name=payload.name,
+                expected_amount=payload.expected_amount,
+                initial_due_date=payload.initial_due_date,
+                recurrence_type=payload.recurrence_type,
+                priority=payload.priority,
+            ),
+            today=payload.today or date.today(),
+            horizon_days=payload.horizon_days,
+        )
+    except ActionValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {
+        "payment_id": result.payment_id,
+        "generated_occurrences_count": result.generated_occurrences_count,
+        "skipped_existing_count": result.skipped_existing_count,
     }

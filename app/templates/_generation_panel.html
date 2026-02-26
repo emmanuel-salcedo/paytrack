@@ -15,13 +15,36 @@
       </label>
       <button type="submit">Run Generation</button>
     </form>
+    <form
+      hx-post="/admin/run-generation-once-today"
+      hx-target="#generation-panel"
+      hx-swap="outerHTML"
+      method="post"
+      class="inline-form"
+    >
+      <input type="hidden" name="horizon_days" value="{{ generation_state.horizon_days if generation_state else 90 }}">
+      <button type="submit">Run Once Today (Guarded)</button>
+    </form>
     {% if generation_state %}
+      {% if generation_state.mode == "guarded" %}
+        {% if generation_state.ran %}
+          <p class="success" role="status">Guarded run executed for {{ generation_state.run_date }}.</p>
+        {% else %}
+          <p class="warn" role="status">Guard blocked duplicate run for {{ generation_state.run_date }} (already ran today).</p>
+        {% endif %}
+      {% else %}
+        <p class="success" role="status">Manual run executed (unguarded).</p>
+      {% endif %}
       <div class="stack">
-        <div class="row"><span>Range</span><strong>{{ generation_state.range_start }} → {{ generation_state.range_end }}</strong></div>
-        <div class="row"><span>Inserted</span><strong>{{ generation_state.generated_count }}</strong></div>
-        <div class="row"><span>Skipped Existing</span><strong>{{ generation_state.skipped_existing_count }}</strong></div>
+        {% if generation_state.range_start %}
+          <div class="row"><span>Range</span><strong>{{ generation_state.range_start }} → {{ generation_state.range_end }}</strong></div>
+          <div class="row"><span>Inserted</span><strong>{{ generation_state.generated_count }}</strong></div>
+          <div class="row"><span>Skipped Existing</span><strong>{{ generation_state.skipped_existing_count }}</strong></div>
+        {% endif %}
+        {% if generation_state.job_name %}
+          <div class="row"><span>Job</span><strong>{{ generation_state.job_name }}</strong></div>
+        {% endif %}
       </div>
     {% endif %}
   </article>
 </div>
-

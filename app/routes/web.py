@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db_session
 from app.models import AppSettings, PaySchedule
-from app.services.occurrence_generation import generate_occurrences_ahead
+from app.services.occurrence_generation import generate_occurrences_ahead, run_generate_occurrences_once_per_day
 from app.services.payments_service import CreatePaymentInput, create_payment, list_payments
 
 templates = Jinja2Templates(directory=str(Path(__file__).resolve().parents[1] / "templates"))
@@ -105,5 +105,36 @@ def run_generation_web(
             "range_start": result.range_start,
             "range_end": result.range_end,
             "horizon_days": horizon_days,
+            "mode": "manual",
+            "ran": True,
         },
     )
+
+
+@web_router.post("/admin/run-generation-once-today")
+def run_generation_once_today_web(
+    request: Request,
+    horizon_days: int = Form(90),
+    db: Session = Depends(get_db_session),
+):
+    if horizon_days < 1 or horizon_days > 365:
+        horizon_days = 90
+
+    guarded = run_generate_occurrences_once_per_day(db, today=date.today(), horizon_days=horizon_days)
+    generation_state: dict[str, object] = {
+        "mode": "guarded",
+        "ran": guarded.ran,
+        "run_date": guarded.run_date,
+        "job_name": guarded.job_name,
+        "horizon_days": horizon_days,
+    }
+    if guarded.generation_result is not None:
+        generation_state.update(
+            {
+                "generated_count": guarded.generation_result.generated_count,
+                "skipped_existing_count": guarded.generation_result.skipped_existing_count,
+                "range_start": guarded.generation_result.range_start,
+                "range_end": guarded.generation_result.range_end,
+            }
+        )
+    return _render_generation_panel(request, generation_state=generation_state)

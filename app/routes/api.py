@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db_session
 from app.models.payments import Payment
-from app.services.occurrence_generation import generate_occurrences_ahead
+from app.services.occurrence_generation import generate_occurrences_ahead, run_generate_occurrences_once_per_day
 from app.services.payments_service import CreatePaymentInput, create_payment, list_payments
 
 api_router = APIRouter(tags=["api"])
@@ -95,3 +95,29 @@ def manual_run_generation(payload: ManualGenerationRequest, db: Session = Depend
         "range_end": result.range_end.isoformat(),
         "horizon_days": payload.horizon_days,
     }
+
+
+@api_router.post("/admin/run-generation-once-today")
+def manual_run_generation_once_today(
+    payload: ManualGenerationRequest,
+    db: Session = Depends(get_db_session),
+) -> dict[str, object]:
+    run_today = payload.today or date.today()
+    guarded = run_generate_occurrences_once_per_day(db, today=run_today, horizon_days=payload.horizon_days)
+
+    response: dict[str, object] = {
+        "job_name": guarded.job_name,
+        "run_date": guarded.run_date.isoformat(),
+        "ran": guarded.ran,
+        "horizon_days": payload.horizon_days,
+    }
+    if guarded.generation_result is not None:
+        response.update(
+            {
+                "generated_count": guarded.generation_result.generated_count,
+                "skipped_existing_count": guarded.generation_result.skipped_existing_count,
+                "range_start": guarded.generation_result.range_start.isoformat(),
+                "range_end": guarded.generation_result.range_end.isoformat(),
+            }
+        )
+    return response

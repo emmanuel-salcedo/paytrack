@@ -72,6 +72,23 @@ def test_api_payments_create_list_and_manual_generation(tmp_path) -> None:
             rerun_payload = rerun.json()
             assert rerun_payload["generated_count"] == 0
             assert rerun_payload["skipped_existing_count"] >= 1
+
+            guarded_first = client.post(
+                "/api/admin/run-generation-once-today",
+                json={"today": "2026-01-16", "horizon_days": 60},
+            )
+            assert guarded_first.status_code == 200
+            guarded_first_payload = guarded_first.json()
+            assert guarded_first_payload["ran"] is True
+            assert guarded_first_payload["job_name"] == "generate_occurrences_ahead"
+
+            guarded_second = client.post(
+                "/api/admin/run-generation-once-today",
+                json={"today": "2026-01-16", "horizon_days": 60},
+            )
+            assert guarded_second.status_code == 200
+            guarded_second_payload = guarded_second.json()
+            assert guarded_second_payload["ran"] is False
     finally:
         app.dependency_overrides.clear()
 
@@ -111,5 +128,21 @@ def test_web_htmx_payments_and_generation_panels(tmp_path) -> None:
             assert gen_resp.status_code == 200
             assert "generation-panel" in gen_resp.text
             assert "Inserted" in gen_resp.text
+
+            guarded_first = client.post(
+                "/admin/run-generation-once-today",
+                data={"horizon_days": "30"},
+                headers={"HX-Request": "true"},
+            )
+            assert guarded_first.status_code == 200
+            assert "Guarded run executed" in guarded_first.text
+
+            guarded_second = client.post(
+                "/admin/run-generation-once-today",
+                data={"horizon_days": "30"},
+                headers={"HX-Request": "true"},
+            )
+            assert guarded_second.status_code == 200
+            assert "Guard blocked duplicate run" in guarded_second.text
     finally:
         app.dependency_overrides.clear()

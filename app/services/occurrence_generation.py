@@ -26,6 +26,14 @@ class OccurrenceGenerationResult:
     range_end: date
 
 
+@dataclass(frozen=True)
+class GuardedOccurrenceGenerationRunResult:
+    job_name: str
+    run_date: date
+    ran: bool
+    generation_result: OccurrenceGenerationResult | None
+
+
 def _to_payment_schedule_spec(payment: Payment) -> PaymentScheduleSpec:
     amount = payment.expected_amount
     if not isinstance(amount, Decimal):
@@ -123,6 +131,34 @@ def try_mark_daily_job_run(session: Session, *, job_name: str, run_date: date) -
         return False
 
 
+def run_generate_occurrences_once_per_day(
+    session: Session,
+    *,
+    today: date,
+    horizon_days: int = DEFAULT_GENERATION_HORIZON_DAYS,
+) -> GuardedOccurrenceGenerationRunResult:
+    did_mark = try_mark_daily_job_run(
+        session,
+        job_name=GENERATE_OCCURRENCES_JOB_NAME,
+        run_date=today,
+    )
+    if not did_mark:
+        return GuardedOccurrenceGenerationRunResult(
+            job_name=GENERATE_OCCURRENCES_JOB_NAME,
+            run_date=today,
+            ran=False,
+            generation_result=None,
+        )
+
+    generation_result = generate_occurrences_ahead(session, today=today, horizon_days=horizon_days)
+    return GuardedOccurrenceGenerationRunResult(
+        job_name=GENERATE_OCCURRENCES_JOB_NAME,
+        run_date=today,
+        ran=True,
+        generation_result=generation_result,
+    )
+
+
 def generate_occurrences_ahead_if_ready(
     *,
     today: date,
@@ -134,3 +170,16 @@ def generate_occurrences_ahead_if_ready(
         if not {"payments", "occurrences"}.issubset(tables):
             return None
         return generate_occurrences_ahead(session, today=today, horizon_days=horizon_days)
+
+
+def run_generate_occurrences_once_per_day_if_ready(
+    *,
+    today: date,
+    horizon_days: int = DEFAULT_GENERATION_HORIZON_DAYS,
+) -> GuardedOccurrenceGenerationRunResult | None:
+    with SessionLocal() as session:
+        inspector = inspect(session.bind)
+        tables = set(inspector.get_table_names())
+        if not {"payments", "occurrences", "job_runs"}.issubset(tables):
+            return None
+        return run_generate_occurrences_once_per_day(session, today=today, horizon_days=horizon_days)

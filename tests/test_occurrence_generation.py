@@ -13,6 +13,7 @@ from app.models.payments import Occurrence, Payment
 from app.services.occurrence_generation import (
     GENERATE_OCCURRENCES_JOB_NAME,
     generate_occurrences_ahead,
+    run_generate_occurrences_once_per_day,
     try_mark_daily_job_run,
 )
 
@@ -122,5 +123,38 @@ def test_job_run_daily_guard_prevents_duplicate_day_runs(tmp_path) -> None:
         assert second is False
         assert third is True
         assert len(runs) == 2
+    finally:
+        session.close()
+
+
+def test_guarded_generation_runs_only_once_per_day(tmp_path) -> None:
+    session = _make_session(tmp_path)
+    try:
+        session.add(
+            Payment(
+                name="Streaming",
+                expected_amount=Decimal("12.99"),
+                initial_due_date=date(2026, 1, 20),
+                recurrence_type="monthly",
+                is_active=True,
+            )
+        )
+        session.commit()
+
+        first = run_generate_occurrences_once_per_day(
+            session,
+            today=date(2026, 2, 26),
+            horizon_days=45,
+        )
+        second = run_generate_occurrences_once_per_day(
+            session,
+            today=date(2026, 2, 26),
+            horizon_days=45,
+        )
+
+        assert first.ran is True
+        assert first.generation_result is not None
+        assert second.ran is False
+        assert second.generation_result is None
     finally:
         session.close()

@@ -39,6 +39,28 @@
         <h2>In-App Notifications</h2>
         <p class="muted">Latest notifications and delivery outcomes from manual and automated jobs.</p>
       </div>
+      <form method="get" action="/notifications" class="inline-form">
+        <label>
+          <span>Sort</span>
+          <select name="sort">
+            <option value="newest" {% if notifications_sort == 'newest' %}selected{% endif %}>Newest</option>
+            <option value="oldest" {% if notifications_sort == 'oldest' %}selected{% endif %}>Oldest</option>
+            <option value="unread_first" {% if notifications_sort == 'unread_first' %}selected{% endif %}>Unread First</option>
+          </select>
+        </label>
+        <label>
+          <span>Rows</span>
+          <select name="per_page">
+            <option value="10" {% if notifications_per_page == 10 %}selected{% endif %}>10</option>
+            <option value="20" {% if notifications_per_page == 20 %}selected{% endif %}>20</option>
+            <option value="50" {% if notifications_per_page == 50 %}selected{% endif %}>50</option>
+          </select>
+        </label>
+        <input type="hidden" name="page" value="1">
+        <input type="hidden" name="log_page" value="{{ delivery_log_page_num }}">
+        <input type="hidden" name="log_per_page" value="{{ delivery_log_per_page }}">
+        <button type="submit">Apply</button>
+      </form>
     </div>
 
     {% if notifications %}
@@ -81,9 +103,90 @@
           {% endfor %}
         </tbody>
       </table>
+      <div class="pager-row">
+        <span class="muted">Showing {{ notifications|length }} of {{ notifications_total }} notifications (page {{ notifications_page_num }})</span>
+        <div class="inline-form">
+          {% if notifications_has_prev %}
+            <a class="link-btn" href="/notifications?page={{ notifications_page_num - 1 }}&per_page={{ notifications_per_page }}&sort={{ notifications_sort }}&log_page={{ delivery_log_page_num }}&log_per_page={{ delivery_log_per_page }}">Previous</a>
+          {% endif %}
+          {% if notifications_has_next %}
+            <a class="link-btn" href="/notifications?page={{ notifications_page_num + 1 }}&per_page={{ notifications_per_page }}&sort={{ notifications_sort }}&log_page={{ delivery_log_page_num }}&log_per_page={{ delivery_log_per_page }}">Next</a>
+          {% endif %}
+        </div>
+      </div>
     {% else %}
       <p class="muted">No notifications yet.</p>
     {% endif %}
   </article>
+</section>
+
+<section class="card" aria-label="Notification delivery log" style="margin-top: 1rem;">
+  <div class="section-head">
+    <div>
+      <h2>Delivery Log</h2>
+      <p class="muted">Read-only `notification_log` entries for dedup and send status debugging.</p>
+    </div>
+    <form method="get" action="/notifications" class="inline-form">
+      <label>
+        <span>Log Rows</span>
+        <select name="log_per_page">
+          <option value="10" {% if delivery_log_per_page == 10 %}selected{% endif %}>10</option>
+          <option value="20" {% if delivery_log_per_page == 20 %}selected{% endif %}>20</option>
+          <option value="50" {% if delivery_log_per_page == 50 %}selected{% endif %}>50</option>
+        </select>
+      </label>
+      <input type="hidden" name="page" value="{{ notifications_page_num }}">
+      <input type="hidden" name="per_page" value="{{ notifications_per_page }}">
+      <input type="hidden" name="sort" value="{{ notifications_sort }}">
+      <input type="hidden" name="log_page" value="1">
+      <button type="submit">Apply</button>
+    </form>
+  </div>
+
+  {% if delivery_logs %}
+    <table class="payments-table compact-table">
+      <thead>
+        <tr>
+          <th>Created</th>
+          <th>Type</th>
+          <th>Channel</th>
+          <th>Bucket</th>
+          <th>Dedup Key</th>
+          <th>Status</th>
+          <th>Delivered</th>
+          <th>Error</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in delivery_logs %}
+          <tr>
+            <td>{{ row.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+            <td>{{ row.type }}</td>
+            <td>{{ row.channel }}</td>
+            <td>{{ row.bucket_date }}</td>
+            <td><code>{{ row.dedup_key }}</code></td>
+            <td>
+              <span class="status-pill {% if row.status == 'sent' %}status-completed{% elif row.status == 'error' %}status-canceled{% else %}status-skipped{% endif %}">{{ row.status }}</span>
+            </td>
+            <td>{{ row.delivered_at.strftime('%Y-%m-%d %H:%M') if row.delivered_at else '-' }}</td>
+            <td class="muted">{{ row.error_message or '-' }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <div class="pager-row">
+      <span class="muted">Showing {{ delivery_logs|length }} of {{ delivery_log_total }} log rows (page {{ delivery_log_page_num }})</span>
+      <div class="inline-form">
+        {% if delivery_log_has_prev %}
+          <a class="link-btn" href="/notifications?page={{ notifications_page_num }}&per_page={{ notifications_per_page }}&sort={{ notifications_sort }}&log_page={{ delivery_log_page_num - 1 }}&log_per_page={{ delivery_log_per_page }}">Previous</a>
+        {% endif %}
+        {% if delivery_log_has_next %}
+          <a class="link-btn" href="/notifications?page={{ notifications_page_num }}&per_page={{ notifications_per_page }}&sort={{ notifications_sort }}&log_page={{ delivery_log_page_num + 1 }}&log_per_page={{ delivery_log_per_page }}">Next</a>
+        {% endif %}
+      </div>
+    </div>
+  {% else %}
+    <p class="muted">No delivery log entries yet.</p>
+  {% endif %}
 </section>
 {% endblock %}

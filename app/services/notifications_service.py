@@ -25,6 +25,19 @@ class NotificationRowView:
     read_at: datetime | None
 
 
+@dataclass(frozen=True)
+class NotificationLogRowView:
+    id: int
+    type: str
+    channel: str
+    bucket_date: date
+    dedup_key: str
+    status: str
+    error_message: str | None
+    delivered_at: datetime | None
+    created_at: datetime
+
+
 def create_in_app_notification(
     session: Session,
     *,
@@ -120,10 +133,25 @@ def finalize_notification_log_entry(
     return row
 
 
-def list_notifications(session: Session, *, limit: int = 200) -> list[NotificationRowView]:
-    rows = session.scalars(
-        select(Notification).order_by(Notification.created_at.desc(), Notification.id.desc()).limit(limit)
-    ).all()
+def count_notifications(session: Session) -> int:
+    return int(session.scalar(select(func.count()).select_from(Notification)) or 0)
+
+
+def list_notifications(
+    session: Session,
+    *,
+    limit: int = 200,
+    offset: int = 0,
+    sort: str = "newest",
+) -> list[NotificationRowView]:
+    stmt = select(Notification)
+    if sort == "oldest":
+        stmt = stmt.order_by(Notification.created_at.asc(), Notification.id.asc())
+    elif sort == "unread_first":
+        stmt = stmt.order_by(Notification.is_read.asc(), Notification.created_at.desc(), Notification.id.desc())
+    else:
+        stmt = stmt.order_by(Notification.created_at.desc(), Notification.id.desc())
+    rows = session.scalars(stmt.offset(max(offset, 0)).limit(limit)).all()
     return [
         NotificationRowView(
             id=row.id,
@@ -133,6 +161,38 @@ def list_notifications(session: Session, *, limit: int = 200) -> list[Notificati
             is_read=row.is_read,
             created_at=row.created_at,
             read_at=row.read_at,
+        )
+        for row in rows
+    ]
+
+
+def count_notification_logs(session: Session) -> int:
+    return int(session.scalar(select(func.count()).select_from(NotificationLog)) or 0)
+
+
+def list_notification_logs(
+    session: Session,
+    *,
+    limit: int = 50,
+    offset: int = 0,
+) -> list[NotificationLogRowView]:
+    rows = session.scalars(
+        select(NotificationLog)
+        .order_by(NotificationLog.created_at.desc(), NotificationLog.id.desc())
+        .offset(max(offset, 0))
+        .limit(limit)
+    ).all()
+    return [
+        NotificationLogRowView(
+            id=row.id,
+            type=row.type,
+            channel=row.channel,
+            bucket_date=row.bucket_date,
+            dedup_key=row.dedup_key,
+            status=row.status,
+            error_message=row.error_message,
+            delivered_at=row.delivered_at,
+            created_at=row.created_at,
         )
         for row in rows
     ]

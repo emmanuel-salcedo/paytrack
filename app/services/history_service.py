@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 
-from sqlalchemy import Select, or_, select
+from sqlalchemy import Select, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.models import Occurrence, Payment
@@ -29,6 +29,12 @@ class HistoryRow:
     expected_amount: Decimal
     amount_paid: Decimal | None
     paid_date: date | None
+
+
+@dataclass(frozen=True)
+class HistoryPage:
+    rows: list[HistoryRow]
+    total_count: int
 
 
 def _apply_history_filters(stmt: Select, filters: HistoryFilters) -> Select:
@@ -67,20 +73,31 @@ def list_occurrence_history(
     filters: HistoryFilters,
     limit: int = 250,
 ) -> list[HistoryRow]:
-    stmt = (
-        select(Occurrence, Payment)
-        .join(Payment, Payment.id == Occurrence.payment_id)
-        .order_by(
-            Occurrence.due_date.desc(),
-            Occurrence.created_at.desc(),
-            Occurrence.id.desc(),
-        )
-        .limit(limit)
-    )
-    stmt = _apply_history_filters(stmt, filters)
+    return list_occurrence_history_page(session, filters=filters, limit=limit, offset=0, sort="due_desc").rows
 
-    rows = session.execute(stmt).all()
-    return [
+
+def list_occurrence_history_page(
+    session: Session,
+    *,
+    filters: HistoryFilters,
+    limit: int = 50,
+    offset: int = 0,
+    sort: str = "due_desc",
+) -> HistoryPage:
+    base_stmt = select(Occurrence, Payment).join(Payment, Payment.id == Occurrence.payment_id)
+    filtered_stmt = _apply_history_filters(base_stmt, filters)
+
+    if sort == "due_asc":
+        ordered_stmt = filtered_stmt.order_by(Occurrence.due_date.asc(), Occurrence.id.asc())
+    elif sort == "paid_desc":
+        ordered_stmt = filtered_stmt.order_by(Occurrence.paid_date.desc(), Occurrence.due_date.desc(), Occurrence.id.desc())
+    else:
+        ordered_stmt = filtered_stmt.order_by(Occurrence.due_date.desc(), Occurrence.created_at.desc(), Occurrence.id.desc())
+
+    rows = session.execute(ordered_stmt.offset(max(offset, 0)).limit(limit)).all()
+    count_stmt = _apply_history_filters(select(func.count()).select_from(Occurrence).join(Payment, Payment.id == Occurrence.payment_id), filters)
+    total_count = int(session.scalar(count_stmt) or 0)
+    result_rows = [
         HistoryRow(
             occurrence_id=occ.id,
             payment_id=payment.id,
@@ -93,4 +110,4 @@ def list_occurrence_history(
         )
         for occ, payment in rows
     ]
-
+    return HistoryPage(rows=result_rows, total_count=total_count)

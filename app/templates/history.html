@@ -35,6 +35,23 @@
         <span>Search</span>
         <input type="text" name="q" value="{{ filters.q }}" placeholder="Payment name">
       </label>
+      <label>
+        <span>Sort</span>
+        <select name="sort">
+          <option value="due_desc" {% if history_sort == 'due_desc' %}selected{% endif %}>Due Date (Newest)</option>
+          <option value="due_asc" {% if history_sort == 'due_asc' %}selected{% endif %}>Due Date (Oldest)</option>
+          <option value="paid_desc" {% if history_sort == 'paid_desc' %}selected{% endif %}>Paid Date (Newest)</option>
+        </select>
+      </label>
+      <label>
+        <span>Rows Per Page</span>
+        <select name="per_page">
+          <option value="10" {% if history_per_page == 10 %}selected{% endif %}>10</option>
+          <option value="25" {% if history_per_page == 25 %}selected{% endif %}>25</option>
+          <option value="50" {% if history_per_page == 50 %}selected{% endif %}>50</option>
+        </select>
+      </label>
+      <input type="hidden" name="page" value="1">
       <div class="inline-form">
         <button type="submit">Apply Filters</button>
         <a class="link-btn" href="/history">Reset</a>
@@ -46,7 +63,7 @@
     <div class="section-head">
       <div>
         <h2>Occurrences</h2>
-        <p class="muted">Showing {{ history_rows|length }} rows{% if filters.status %} for status "{{ filters.status }}"{% endif %}.</p>
+        <p class="muted">Showing {{ history_rows|length }} of {{ history_total }} rows{% if filters.status %} for status "{{ filters.status }}"{% endif %}.</p>
       </div>
       <a class="link-btn" href="/dashboard">Back to Dashboard</a>
     </div>
@@ -82,6 +99,18 @@
           {% endfor %}
         </tbody>
       </table>
+
+      <div class="pager-row">
+        <span class="muted">Page {{ history_page_num }}</span>
+        <div class="inline-form">
+          {% if history_has_prev %}
+            <a class="link-btn" href="/history?status={{ filters.status }}&start_date={{ filters.start_date }}&end_date={{ filters.end_date }}&q={{ filters.q }}&sort={{ history_sort }}&per_page={{ history_per_page }}&page={{ history_page_num - 1 }}">Previous</a>
+          {% endif %}
+          {% if history_has_next %}
+            <a class="link-btn" href="/history?status={{ filters.status }}&start_date={{ filters.start_date }}&end_date={{ filters.end_date }}&q={{ filters.q }}&sort={{ history_sort }}&per_page={{ history_per_page }}&page={{ history_page_num + 1 }}">Next</a>
+          {% endif %}
+        </div>
+      </div>
     {% else %}
       <p class="muted">No occurrences match the current filters.</p>
     {% endif %}

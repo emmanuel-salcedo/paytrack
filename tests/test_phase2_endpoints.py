@@ -714,6 +714,11 @@ def test_admin_notification_jobs_create_due_soon_overdue_and_guard(tmp_path) -> 
             assert "Due Soon" in notifications_page.text
             assert "Overdue" in notifications_page.text
             assert "Force Daily Summary Now" in notifications_page.text
+            assert "Delivery Log" in notifications_page.text
+
+            paged_notifications = client.get("/notifications", params={"per_page": 1, "log_per_page": 1, "sort": "oldest"})
+            assert paged_notifications.status_code == 200
+            assert "Showing 1 of" in paged_notifications.text
     finally:
         app.dependency_overrides.clear()
 
@@ -812,6 +817,10 @@ def test_history_page_renders_and_filters(tmp_path) -> None:
             filtered_completed = client.get("/history", params={"status": "completed"})
             assert filtered_completed.status_code == 200
             assert "completed" in filtered_completed.text
+
+            paged_history = client.get("/history", params={"per_page": 1, "sort": "due_asc"})
+            assert paged_history.status_code == 200
+            assert "Rows Per Page" in paged_history.text
 
             filtered_search = client.get("/history", params={"q": "Inter"})
             assert filtered_search.status_code == 200

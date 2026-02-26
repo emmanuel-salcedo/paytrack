@@ -22,11 +22,14 @@ from app.services.actions_service import (
     update_payment_and_rebuild_future_scheduled,
 )
 from app.services.cycle_views_service import get_cycle_snapshot
-from app.services.history_service import HistoryFilters, list_occurrence_history
+from app.services.history_service import HistoryFilters, list_occurrence_history_page
 from app.services.notifications_service import (
     NotificationsValidationError,
+    count_notification_logs,
+    count_notifications,
     create_in_app_notification,
     get_unread_notifications_count,
+    list_notification_logs,
     list_notifications,
     mark_all_notifications_read,
     mark_notification_read,
@@ -347,15 +350,45 @@ def _render_notifications_page(
     *,
     notifications_notice: str | None = None,
     notifications_error: str | None = None,
+    notifications_page_num: int = 1,
+    notifications_per_page: int = 20,
+    notifications_sort: str = "newest",
+    delivery_log_page_num: int = 1,
+    delivery_log_per_page: int = 20,
 ):
+    notif_offset = max(notifications_page_num - 1, 0) * notifications_per_page
+    log_offset = max(delivery_log_page_num - 1, 0) * delivery_log_per_page
+    notifications_total = count_notifications(db)
+    delivery_log_total = count_notification_logs(db)
     return templates.TemplateResponse(
         request,
         "notifications.html",
         {
-            "notifications": list_notifications(db),
+            "notifications": list_notifications(
+                db,
+                limit=notifications_per_page,
+                offset=notif_offset,
+                sort=notifications_sort,
+            ),
+            "delivery_logs": list_notification_logs(
+                db,
+                limit=delivery_log_per_page,
+                offset=log_offset,
+            ),
             "notifications_unread_count": get_unread_notifications_count(db),
             "notifications_notice": notifications_notice,
             "notifications_error": notifications_error,
+            "notifications_page_num": notifications_page_num,
+            "notifications_per_page": notifications_per_page,
+            "notifications_sort": notifications_sort,
+            "notifications_total": notifications_total,
+            "notifications_has_prev": notifications_page_num > 1,
+            "notifications_has_next": notif_offset + notifications_per_page < notifications_total,
+            "delivery_log_page_num": delivery_log_page_num,
+            "delivery_log_per_page": delivery_log_per_page,
+            "delivery_log_total": delivery_log_total,
+            "delivery_log_has_prev": delivery_log_page_num > 1,
+            "delivery_log_has_next": log_offset + delivery_log_per_page < delivery_log_total,
         },
     )
 
@@ -813,6 +846,9 @@ def history_page(
     start_date: str | None = None,
     end_date: str | None = None,
     q: str | None = None,
+    page: int = 1,
+    per_page: int = 25,
+    sort: str = "due_desc",
     db: Session = Depends(get_db_session),
 ):
     parsed_start = date.fromisoformat(start_date) if start_date else None
@@ -823,12 +859,26 @@ def history_page(
         end_date=parsed_end,
         q=q or None,
     )
-    rows = list_occurrence_history(db, filters=filters)
+    per_page = min(max(per_page, 1), 100)
+    page = max(page, 1)
+    history_page_result = list_occurrence_history_page(
+        db,
+        filters=filters,
+        limit=per_page,
+        offset=(page - 1) * per_page,
+        sort=sort,
+    )
     return templates.TemplateResponse(
         request,
         "history.html",
         {
-            "history_rows": rows,
+            "history_rows": history_page_result.rows,
+            "history_total": history_page_result.total_count,
+            "history_page_num": page,
+            "history_per_page": per_page,
+            "history_sort": sort,
+            "history_has_prev": page > 1,
+            "history_has_next": ((page - 1) * per_page) + per_page < history_page_result.total_count,
             "notifications_unread_count": get_unread_notifications_count(db),
             "filters": {
                 "status": status or "",
@@ -982,15 +1032,27 @@ def send_test_telegram_message_web(
 @web_router.get("/notifications")
 def notifications_page(
     request: Request,
+    page: int = 1,
+    per_page: int = 20,
+    sort: str = "newest",
+    log_page: int = 1,
+    log_per_page: int = 20,
     db: Session = Depends(get_db_session),
     notifications_notice: str | None = None,
     notifications_error: str | None = None,
 ):
+    per_page = min(max(per_page, 1), 100)
+    log_per_page = min(max(log_per_page, 1), 100)
     return _render_notifications_page(
         request,
         db,
         notifications_notice=notifications_notice,
         notifications_error=notifications_error,
+        notifications_page_num=max(page, 1),
+        notifications_per_page=per_page,
+        notifications_sort=sort,
+        delivery_log_page_num=max(log_page, 1),
+        delivery_log_per_page=log_per_page,
     )
 
 

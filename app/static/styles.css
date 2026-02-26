@@ -516,6 +516,14 @@ pre {
   margin-bottom: 0.35rem;
 }
 
+.section-head form label {
+  min-width: 0;
+}
+
+.section-head form select {
+  min-width: 130px;
+}
+
 .history-layout {
   margin-top: 1rem;
   display: grid;
@@ -531,6 +539,15 @@ pre {
 
 .history-results .payments-table {
   margin-top: 0.5rem;
+}
+
+.pager-row {
+  margin-top: 0.75rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
 }
 
 .settings-grid {

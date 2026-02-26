@@ -1,0 +1,36 @@
+<section class="grid" aria-label="Cycle snapshots">
+  {% for snapshot in [current_cycle_snapshot, next_cycle_snapshot] %}
+    <article class="card">
+      <h2>{{ snapshot.label }}</h2>
+      <div class="row"><span>Range</span><strong>{{ snapshot.cycle_start }} → {{ snapshot.cycle_end }}</strong></div>
+      <div class="row"><span>Occurrences</span><strong>{{ snapshot.occurrence_count }}</strong></div>
+      <div class="row"><span>Scheduled Amount</span><strong>${{ '%.2f'|format(snapshot.scheduled_amount) }}</strong></div>
+
+      {% if snapshot.occurrences %}
+        <table class="payments-table compact-table">
+          <thead>
+            <tr>
+              <th>Due</th>
+              <th>Payment</th>
+              <th>Amount</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in snapshot.occurrences %}
+              <tr>
+                <td>{{ row.due_date }}</td>
+                <td>{{ row.payment_name }}</td>
+                <td>${{ '%.2f'|format(row.expected_amount) }}</td>
+                <td><span class="status-pill status-{{ row.status }}">{{ row.status }}</span></td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% else %}
+        <p class="muted">No generated occurrences in this cycle yet.</p>
+      {% endif %}
+    </article>
+  {% endfor %}
+</section>
+

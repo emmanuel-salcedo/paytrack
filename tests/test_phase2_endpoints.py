@@ -51,9 +51,20 @@ def test_api_payments_create_list_and_manual_generation(tmp_path) -> None:
             assert created.status_code == 201
             assert created.json()["name"] == "Internet"
 
+            created_weekly = client.post(
+                "/api/payments",
+                json={
+                    "name": "Gym",
+                    "expected_amount": "25.00",
+                    "initial_due_date": "2026-01-08",
+                    "recurrence_type": "weekly",
+                },
+            )
+            assert created_weekly.status_code == 201
+
             listed = client.get("/api/payments")
             assert listed.status_code == 200
-            assert len(listed.json()) == 1
+            assert len(listed.json()) == 2
 
             run_generation = client.post(
                 "/api/admin/run-generation",
@@ -72,6 +83,20 @@ def test_api_payments_create_list_and_manual_generation(tmp_path) -> None:
             rerun_payload = rerun.json()
             assert rerun_payload["generated_count"] == 0
             assert rerun_payload["skipped_existing_count"] >= 1
+
+            current_cycle = client.get("/api/cycles/current", params={"today": "2026-01-15"})
+            assert current_cycle.status_code == 200
+            current_payload = current_cycle.json()
+            assert current_payload["cycle_start"] == "2026-01-02"
+            assert current_payload["cycle_end"] == "2026-01-15"
+            assert any(row["payment_name"] == "Internet" for row in current_payload["occurrences"])
+
+            next_cycle = client.get("/api/cycles/next", params={"today": "2026-01-15"})
+            assert next_cycle.status_code == 200
+            next_payload = next_cycle.json()
+            assert next_payload["cycle_start"] == "2026-01-16"
+            assert next_payload["cycle_end"] == "2026-01-29"
+            assert any(row["payment_name"] == "Gym" for row in next_payload["occurrences"])
 
             guarded_first = client.post(
                 "/api/admin/run-generation-once-today",
@@ -105,6 +130,8 @@ def test_web_htmx_payments_and_generation_panels(tmp_path) -> None:
             assert home.status_code == 200
             assert "Payments (Minimal CRUD)" in home.text
             assert "Occurrence Generation" in home.text
+            assert "Current Cycle" in home.text
+            assert "Next Cycle Preview" in home.text
 
             create_resp = client.post(
                 "/payments",

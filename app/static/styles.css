@@ -114,6 +114,43 @@ button {
   font-weight: 600;
 }
 
+.compact-table {
+  margin-top: 0.75rem;
+  font-size: 0.85rem;
+}
+
+.status-pill {
+  display: inline-block;
+  border-radius: 999px;
+  padding: 0.1rem 0.5rem;
+  border: 1px solid rgba(23, 20, 17, 0.15);
+  background: rgba(23, 20, 17, 0.04);
+}
+
+.status-scheduled {
+  color: #0f766e;
+  border-color: rgba(15, 118, 110, 0.25);
+  background: rgba(15, 118, 110, 0.08);
+}
+
+.status-completed {
+  color: #166534;
+  border-color: rgba(22, 101, 52, 0.25);
+  background: rgba(22, 101, 52, 0.08);
+}
+
+.status-skipped {
+  color: #92400e;
+  border-color: rgba(146, 64, 14, 0.25);
+  background: rgba(146, 64, 14, 0.08);
+}
+
+.status-canceled {
+  color: #6b7280;
+  border-color: rgba(107, 114, 128, 0.25);
+  background: rgba(107, 114, 128, 0.08);
+}
+
 .error {
   color: #9f1239;
   background: #fff1f2;

@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db_session
 from app.models.payments import Payment
+from app.services.cycle_views_service import get_cycle_snapshot
 from app.services.occurrence_generation import generate_occurrences_ahead, run_generate_occurrences_once_per_day
 from app.services.payments_service import CreatePaymentInput, create_payment, list_payments
 
@@ -50,6 +51,27 @@ class PaymentResponse(BaseModel):
 class ManualGenerationRequest(BaseModel):
     today: date | None = None
     horizon_days: int = Field(default=90, ge=1, le=365)
+
+
+def _serialize_cycle_snapshot(snapshot) -> dict[str, object]:
+    return {
+        "label": snapshot.label,
+        "cycle_start": snapshot.cycle_start.isoformat(),
+        "cycle_end": snapshot.cycle_end.isoformat(),
+        "scheduled_amount": str(snapshot.scheduled_amount),
+        "occurrence_count": snapshot.occurrence_count,
+        "occurrences": [
+            {
+                "occurrence_id": row.occurrence_id,
+                "payment_id": row.payment_id,
+                "payment_name": row.payment_name,
+                "due_date": row.due_date.isoformat(),
+                "expected_amount": str(row.expected_amount),
+                "status": row.status,
+            }
+            for row in snapshot.occurrences
+        ],
+    }
 
 
 @api_router.get("/health")
@@ -121,3 +143,21 @@ def manual_run_generation_once_today(
             }
         )
     return response
+
+
+@api_router.get("/cycles/current")
+def current_cycle_snapshot_api(
+    today: date | None = Query(default=None),
+    db: Session = Depends(get_db_session),
+) -> dict[str, object]:
+    snapshot = get_cycle_snapshot(db, today=today or date.today(), which="current")
+    return _serialize_cycle_snapshot(snapshot)
+
+
+@api_router.get("/cycles/next")
+def next_cycle_snapshot_api(
+    today: date | None = Query(default=None),
+    db: Session = Depends(get_db_session),
+) -> dict[str, object]:
+    snapshot = get_cycle_snapshot(db, today=today or date.today(), which="next")
+    return _serialize_cycle_snapshot(snapshot)

@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db_session
 from app.models import AppSettings, PaySchedule
+from app.services.cycle_views_service import get_cycle_snapshot
 from app.services.occurrence_generation import generate_occurrences_ahead, run_generate_occurrences_once_per_day
 from app.services.payments_service import CreatePaymentInput, create_payment, list_payments
 
@@ -22,6 +23,8 @@ def home(request: Request, db: Session = Depends(get_db_session)):
     schedule = db.query(PaySchedule).first()
     app_settings = db.query(AppSettings).first()
     payments = list_payments(db)
+    current_cycle_snapshot = get_cycle_snapshot(db, today=date.today(), which="current")
+    next_cycle_snapshot = get_cycle_snapshot(db, today=date.today(), which="next")
     return templates.TemplateResponse(
         request,
         "index.html",
@@ -29,6 +32,8 @@ def home(request: Request, db: Session = Depends(get_db_session)):
             "schedule": schedule,
             "app_settings": app_settings,
             "payments": payments,
+            "current_cycle_snapshot": current_cycle_snapshot,
+            "next_cycle_snapshot": next_cycle_snapshot,
             "payment_error": None,
             "generation_state": None,
         },

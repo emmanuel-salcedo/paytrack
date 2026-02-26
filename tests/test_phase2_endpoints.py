@@ -313,3 +313,54 @@ def test_web_htmx_payments_and_generation_panels(tmp_path) -> None:
             assert "Guard blocked duplicate run" in guarded_second.text
     finally:
         app.dependency_overrides.clear()
+
+
+def test_history_page_renders_and_filters(tmp_path) -> None:
+    SessionLocal = _test_session_factory(tmp_path)
+
+    def override_get_db():
+        yield from _override_db(SessionLocal)
+
+    app.dependency_overrides[get_db_session] = override_get_db
+    try:
+        with TestClient(app) as client:
+            # Seed a payment + occurrences via existing flows
+            created = client.post(
+                "/api/payments",
+                json={
+                    "name": "Internet",
+                    "expected_amount": "80.00",
+                    "initial_due_date": "2026-01-15",
+                    "recurrence_type": "monthly",
+                },
+            )
+            assert created.status_code == 201
+
+            run_generation = client.post(
+                "/api/admin/run-generation",
+                json={"today": "2026-01-15", "horizon_days": 60},
+            )
+            assert run_generation.status_code == 200
+
+            current_cycle = client.get("/api/cycles/current", params={"today": "2026-01-15"})
+            occ = next(row for row in current_cycle.json()["occurrences"] if row["payment_name"] == "Internet")
+            mark_paid = client.post(
+                f"/api/occurrences/{occ['occurrence_id']}/mark-paid",
+                json={"today": "2026-01-15"},
+            )
+            assert mark_paid.status_code == 200
+
+            history = client.get("/history")
+            assert history.status_code == 200
+            assert "Occurrence History" in history.text
+            assert "Internet" in history.text
+
+            filtered_completed = client.get("/history", params={"status": "completed"})
+            assert filtered_completed.status_code == 200
+            assert "completed" in filtered_completed.text
+
+            filtered_search = client.get("/history", params={"q": "Inter"})
+            assert filtered_search.status_code == 200
+            assert "Internet" in filtered_search.text
+    finally:
+        app.dependency_overrides.clear()

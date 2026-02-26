@@ -18,6 +18,7 @@ from app.services.actions_service import (
     undo_mark_paid,
 )
 from app.services.cycle_views_service import get_cycle_snapshot
+from app.services.history_service import HistoryFilters, list_occurrence_history
 from app.services.occurrence_generation import (
     generate_occurrences_ahead,
     run_generate_occurrences_once_per_day_in_session_if_ready,
@@ -252,3 +253,36 @@ def mark_paid_off_web(
         )
     except (ActionValidationError, ValueError) as exc:
         return _render_interactive_panels(request, db, action_error=str(exc))
+
+
+@web_router.get("/history")
+def history_page(
+    request: Request,
+    status: str | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    q: str | None = None,
+    db: Session = Depends(get_db_session),
+):
+    parsed_start = date.fromisoformat(start_date) if start_date else None
+    parsed_end = date.fromisoformat(end_date) if end_date else None
+    filters = HistoryFilters(
+        status=status or None,
+        start_date=parsed_start,
+        end_date=parsed_end,
+        q=q or None,
+    )
+    rows = list_occurrence_history(db, filters=filters)
+    return templates.TemplateResponse(
+        request,
+        "history.html",
+        {
+            "history_rows": rows,
+            "filters": {
+                "status": status or "",
+                "start_date": start_date or "",
+                "end_date": end_date or "",
+                "q": q or "",
+            },
+        },
+    )

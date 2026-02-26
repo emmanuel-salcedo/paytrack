@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+
+{% block title %}PayTrack | History{% endblock %}
+
+{% block content %}
+<section class="hero">
+  <span class="pill">History</span>
+  <h1>Occurrence History</h1>
+  <p class="muted">Audit completed, skipped, canceled, and scheduled occurrences with simple filters.</p>
+</section>
+
+<section class="card" aria-label="History filters">
+  <h2>Filters</h2>
+  <form method="get" action="/history" class="stack">
+    <div class="form-grid">
+      <label>
+        <span>Status</span>
+        <select name="status">
+          <option value="" {% if not filters.status %}selected{% endif %}>All</option>
+          <option value="scheduled" {% if filters.status == "scheduled" %}selected{% endif %}>Scheduled</option>
+          <option value="completed" {% if filters.status == "completed" %}selected{% endif %}>Completed</option>
+          <option value="skipped" {% if filters.status == "skipped" %}selected{% endif %}>Skipped</option>
+          <option value="canceled" {% if filters.status == "canceled" %}selected{% endif %}>Canceled</option>
+        </select>
+      </label>
+      <label>
+        <span>Start Date</span>
+        <input type="date" name="start_date" value="{{ filters.start_date }}">
+      </label>
+      <label>
+        <span>End Date</span>
+        <input type="date" name="end_date" value="{{ filters.end_date }}">
+      </label>
+      <label>
+        <span>Search</span>
+        <input type="text" name="q" value="{{ filters.q }}" placeholder="Payment name">
+      </label>
+    </div>
+    <div class="inline-form">
+      <button type="submit">Apply Filters</button>
+      <a class="link-btn" href="/history">Reset</a>
+    </div>
+  </form>
+</section>
+
+<section class="card" aria-label="History table">
+  <h2>Occurrences</h2>
+  {% if history_rows %}
+    <table class="payments-table">
+      <thead>
+        <tr>
+          <th>Due Date</th>
+          <th>Payment</th>
+          <th>Status</th>
+          <th>Expected</th>
+          <th>Paid</th>
+          <th>Paid Date</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in history_rows %}
+          <tr>
+            <td>{{ row.due_date }}</td>
+            <td>{{ row.payment_name }}</td>
+            <td><span class="status-pill status-{{ row.status }}">{{ row.status }}</span></td>
+            <td>${{ '%.2f'|format(row.expected_amount) }}</td>
+            <td>
+              {% if row.amount_paid is not none %}
+                ${{ '%.2f'|format(row.amount_paid) }}
+              {% else %}
+                <span class="muted">—</span>
+              {% endif %}
+            </td>
+            <td>{{ row.paid_date or "—" }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p class="muted">No occurrences match the current filters.</p>
+  {% endif %}
+</section>
+{% endblock %}

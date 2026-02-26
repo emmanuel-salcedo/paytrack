@@ -79,7 +79,12 @@ def _serialize_cycle_snapshot(snapshot) -> dict[str, object]:
         "label": snapshot.label,
         "cycle_start": snapshot.cycle_start.isoformat(),
         "cycle_end": snapshot.cycle_end.isoformat(),
-        "scheduled_amount": str(snapshot.scheduled_amount),
+        "totals": {
+            "scheduled": str(snapshot.scheduled_total),
+            "paid": str(snapshot.paid_total),
+            "skipped": str(snapshot.skipped_total),
+            "remaining": str(snapshot.remaining_total),
+        },
         "occurrence_count": snapshot.occurrence_count,
         "occurrences": [
             {

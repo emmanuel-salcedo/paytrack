@@ -29,7 +29,10 @@ class CycleSnapshotView:
     label: str
     cycle_start: date
     cycle_end: date
-    scheduled_amount: Decimal
+    scheduled_total: Decimal
+    paid_total: Decimal
+    skipped_total: Decimal
+    remaining_total: Decimal
     occurrence_count: int
     occurrences: list[CycleOccurrenceView]
 
@@ -78,8 +81,35 @@ def get_cycle_snapshot(
         for occurrence, payment in rows
     ]
 
-    scheduled_amount = sum(
+    # Totals semantics follow the locked scope definitions:
+    # - scheduled/skipped/remaining are based on occurrences due in this cycle (due_date)
+    # - paid is based on completed occurrences with paid_date in this cycle (cash-flow view)
+    scheduled_total = sum(
+        (item.expected_amount for item in occurrences if item.status in {"scheduled", "completed", "skipped"}),
+        start=Decimal("0.00"),
+    )
+    skipped_total = sum(
+        (item.expected_amount for item in occurrences if item.status == "skipped"),
+        start=Decimal("0.00"),
+    )
+    remaining_total = sum(
         (item.expected_amount for item in occurrences if item.status == "scheduled"),
+        start=Decimal("0.00"),
+    )
+    paid_rows = session.scalars(
+        select(Occurrence).where(
+            Occurrence.status == "completed",
+            Occurrence.paid_date.is_not(None),
+            Occurrence.paid_date >= cycle.start,
+            Occurrence.paid_date <= cycle.end,
+        )
+    ).all()
+    paid_total = sum(
+        (
+            Decimal(str(occ.amount_paid))
+            for occ in paid_rows
+            if occ.amount_paid is not None
+        ),
         start=Decimal("0.00"),
     )
 
@@ -87,8 +117,10 @@ def get_cycle_snapshot(
         label=label,
         cycle_start=cycle.start,
         cycle_end=cycle.end,
-        scheduled_amount=scheduled_amount,
+        scheduled_total=scheduled_total,
+        paid_total=paid_total,
+        skipped_total=skipped_total,
+        remaining_total=remaining_total,
         occurrence_count=len(occurrences),
         occurrences=occurrences,
     )
-

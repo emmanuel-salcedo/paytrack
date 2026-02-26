@@ -90,6 +90,12 @@ def test_api_payments_create_list_and_manual_generation(tmp_path) -> None:
             current_payload = current_cycle.json()
             assert current_payload["cycle_start"] == "2026-01-02"
             assert current_payload["cycle_end"] == "2026-01-15"
+            assert current_payload["totals"] == {
+                "scheduled": "105.00",
+                "paid": "0.00",
+                "skipped": "0.00",
+                "remaining": "105.00",
+            }
             assert any(row["payment_name"] == "Internet" for row in current_payload["occurrences"])
             internet_occurrence = next(
                 row for row in current_payload["occurrences"] if row["payment_name"] == "Internet"
@@ -100,6 +106,12 @@ def test_api_payments_create_list_and_manual_generation(tmp_path) -> None:
             next_payload = next_cycle.json()
             assert next_payload["cycle_start"] == "2026-01-16"
             assert next_payload["cycle_end"] == "2026-01-29"
+            assert next_payload["totals"] == {
+                "scheduled": "50.00",
+                "paid": "0.00",
+                "skipped": "0.00",
+                "remaining": "50.00",
+            }
             assert any(row["payment_name"] == "Gym" for row in next_payload["occurrences"])
             gym_occurrence = next(row for row in next_payload["occurrences"] if row["payment_name"] == "Gym")
 
@@ -119,6 +131,23 @@ def test_api_payments_create_list_and_manual_generation(tmp_path) -> None:
             assert edit_paid.json()["amount_paid"] == "79.25"
             assert edit_paid.json()["paid_date"] == "2026-01-18"
 
+            current_after_edit = client.get("/api/cycles/current", params={"today": "2026-01-15"})
+            next_after_edit = client.get("/api/cycles/next", params={"today": "2026-01-15"})
+            assert current_after_edit.status_code == 200
+            assert next_after_edit.status_code == 200
+            assert current_after_edit.json()["totals"] == {
+                "scheduled": "105.00",
+                "paid": "0.00",
+                "skipped": "0.00",
+                "remaining": "25.00",
+            }
+            assert next_after_edit.json()["totals"] == {
+                "scheduled": "50.00",
+                "paid": "79.25",
+                "skipped": "0.00",
+                "remaining": "50.00",
+            }
+
             undo_paid = client.post(f"/api/occurrences/{internet_occurrence['occurrence_id']}/undo-paid")
             assert undo_paid.status_code == 200
             assert undo_paid.json()["status"] == "scheduled"
@@ -127,6 +156,15 @@ def test_api_payments_create_list_and_manual_generation(tmp_path) -> None:
             skip = client.post(f"/api/occurrences/{gym_occurrence['occurrence_id']}/skip")
             assert skip.status_code == 200
             assert skip.json()["status"] == "skipped"
+
+            next_after_skip = client.get("/api/cycles/next", params={"today": "2026-01-15"})
+            assert next_after_skip.status_code == 200
+            assert next_after_skip.json()["totals"] == {
+                "scheduled": "50.00",
+                "paid": "0.00",
+                "skipped": "25.00",
+                "remaining": "25.00",
+            }
 
             paid_off = client.post(
                 f"/api/payments/{internet_payment_id}/paid-off",

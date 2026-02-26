@@ -4,7 +4,10 @@
       <h2>{{ snapshot.label }}</h2>
       <div class="row"><span>Range</span><strong>{{ snapshot.cycle_start }} → {{ snapshot.cycle_end }}</strong></div>
       <div class="row"><span>Occurrences</span><strong>{{ snapshot.occurrence_count }}</strong></div>
-      <div class="row"><span>Scheduled Amount</span><strong>${{ '%.2f'|format(snapshot.scheduled_amount) }}</strong></div>
+      <div class="row"><span>Scheduled</span><strong>${{ '%.2f'|format(snapshot.scheduled_total) }}</strong></div>
+      <div class="row"><span>Paid</span><strong>${{ '%.2f'|format(snapshot.paid_total) }}</strong></div>
+      <div class="row"><span>Skipped</span><strong>${{ '%.2f'|format(snapshot.skipped_total) }}</strong></div>
+      <div class="row"><span>Remaining</span><strong>${{ '%.2f'|format(snapshot.remaining_total) }}</strong></div>
 
       {% if snapshot.occurrences %}
         <table class="payments-table compact-table">

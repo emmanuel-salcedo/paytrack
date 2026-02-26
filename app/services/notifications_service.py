@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date, datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import Select, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -36,6 +36,15 @@ class NotificationLogRowView:
     error_message: str | None
     delivered_at: datetime | None
     created_at: datetime
+
+
+@dataclass(frozen=True)
+class NotificationLogFilters:
+    type: str | None = None
+    channel: str | None = None
+    status: str | None = None
+    start_date: date | None = None
+    end_date: date | None = None
 
 
 def create_in_app_notification(
@@ -170,15 +179,41 @@ def count_notification_logs(session: Session) -> int:
     return int(session.scalar(select(func.count()).select_from(NotificationLog)) or 0)
 
 
+def _apply_notification_log_filters(stmt: Select, filters: NotificationLogFilters | None) -> Select:
+    if filters is None:
+        return stmt
+    if filters.type:
+        stmt = stmt.where(NotificationLog.type == filters.type)
+    if filters.channel:
+        stmt = stmt.where(NotificationLog.channel == filters.channel)
+    if filters.status:
+        stmt = stmt.where(NotificationLog.status == filters.status)
+    if filters.start_date:
+        stmt = stmt.where(NotificationLog.bucket_date >= filters.start_date)
+    if filters.end_date:
+        stmt = stmt.where(NotificationLog.bucket_date <= filters.end_date)
+    return stmt
+
+
+def count_notification_logs_filtered(
+    session: Session,
+    *,
+    filters: NotificationLogFilters | None = None,
+) -> int:
+    stmt = _apply_notification_log_filters(select(func.count()).select_from(NotificationLog), filters)
+    return int(session.scalar(stmt) or 0)
+
+
 def list_notification_logs(
     session: Session,
     *,
     limit: int = 50,
     offset: int = 0,
+    filters: NotificationLogFilters | None = None,
 ) -> list[NotificationLogRowView]:
+    stmt = _apply_notification_log_filters(select(NotificationLog), filters)
     rows = session.scalars(
-        select(NotificationLog)
-        .order_by(NotificationLog.created_at.desc(), NotificationLog.id.desc())
+        stmt.order_by(NotificationLog.created_at.desc(), NotificationLog.id.desc())
         .offset(max(offset, 0))
         .limit(limit)
     ).all()

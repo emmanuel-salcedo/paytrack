@@ -22,11 +22,17 @@ from app.services.actions_service import (
     UpdatePaymentInput,
 )
 from app.services.cycle_views_service import get_cycle_snapshot
+from app.services.history_service import HistoryFilters, list_occurrence_history_page
 from app.services.notification_jobs_service import (
     run_notification_jobs_now_if_ready,
     run_notification_jobs_once_per_day_in_session_if_ready,
 )
-from app.services.notifications_service import create_in_app_notification
+from app.services.notifications_service import (
+    NotificationLogFilters,
+    count_notification_logs_filtered,
+    create_in_app_notification,
+    list_notification_logs,
+)
 from app.services.occurrence_generation import (
     generate_occurrences_ahead,
     run_generate_occurrences_once_per_day_in_session_if_ready,
@@ -171,6 +177,33 @@ def _serialize_occurrence_action_result(occurrence) -> dict[str, object]:
         "expected_amount": str(occurrence.expected_amount),
         "amount_paid": None if occurrence.amount_paid is None else str(occurrence.amount_paid),
         "paid_date": None if occurrence.paid_date is None else occurrence.paid_date.isoformat(),
+    }
+
+
+def _serialize_history_row(row) -> dict[str, object]:
+    return {
+        "occurrence_id": row.occurrence_id,
+        "payment_id": row.payment_id,
+        "payment_name": row.payment_name,
+        "due_date": row.due_date.isoformat(),
+        "status": row.status,
+        "expected_amount": str(row.expected_amount),
+        "amount_paid": None if row.amount_paid is None else str(row.amount_paid),
+        "paid_date": None if row.paid_date is None else row.paid_date.isoformat(),
+    }
+
+
+def _serialize_notification_log_row(row) -> dict[str, object]:
+    return {
+        "id": row.id,
+        "type": row.type,
+        "channel": row.channel,
+        "bucket_date": row.bucket_date.isoformat(),
+        "dedup_key": row.dedup_key,
+        "status": row.status,
+        "error_message": row.error_message,
+        "delivered_at": None if row.delivered_at is None else row.delivered_at.isoformat(),
+        "created_at": row.created_at.isoformat(),
     }
 
 
@@ -341,6 +374,83 @@ def next_cycle_snapshot_api(
 ) -> dict[str, object]:
     snapshot = get_cycle_snapshot(db, today=today or date.today(), which="next")
     return _serialize_cycle_snapshot(snapshot)
+
+
+@api_router.get("/history")
+def history_api(
+    status: str | None = Query(default=None),
+    start_date: date | None = Query(default=None),
+    end_date: date | None = Query(default=None),
+    q: str | None = Query(default=None),
+    page: int = Query(default=1, ge=1),
+    per_page: int = Query(default=25, ge=1, le=100),
+    sort: str = Query(default="due_desc"),
+    db: Session = Depends(get_db_session),
+) -> dict[str, object]:
+    page_result = list_occurrence_history_page(
+        db,
+        filters=HistoryFilters(
+            status=(status or "").strip() or None,
+            start_date=start_date,
+            end_date=end_date,
+            q=(q or "").strip() or None,
+        ),
+        limit=per_page,
+        offset=(page - 1) * per_page,
+        sort=sort,
+    )
+    return {
+        "items": [_serialize_history_row(row) for row in page_result.rows],
+        "page": page,
+        "per_page": per_page,
+        "sort": sort,
+        "total": page_result.total_count,
+        "has_prev": page > 1,
+        "has_next": ((page - 1) * per_page) + per_page < page_result.total_count,
+        "filters": {
+            "status": (status or "").strip() or None,
+            "start_date": None if start_date is None else start_date.isoformat(),
+            "end_date": None if end_date is None else end_date.isoformat(),
+            "q": (q or "").strip() or None,
+        },
+    }
+
+
+@api_router.get("/notification-logs")
+def notification_logs_api(
+    page: int = Query(default=1, ge=1),
+    per_page: int = Query(default=20, ge=1, le=100),
+    type: str | None = Query(default=None),
+    channel: str | None = Query(default=None),
+    status: str | None = Query(default=None),
+    start_date: date | None = Query(default=None),
+    end_date: date | None = Query(default=None),
+    db: Session = Depends(get_db_session),
+) -> dict[str, object]:
+    filters = NotificationLogFilters(
+        type=(type or "").strip() or None,
+        channel=(channel or "").strip() or None,
+        status=(status or "").strip() or None,
+        start_date=start_date,
+        end_date=end_date,
+    )
+    total = count_notification_logs_filtered(db, filters=filters)
+    items = list_notification_logs(db, limit=per_page, offset=(page - 1) * per_page, filters=filters)
+    return {
+        "items": [_serialize_notification_log_row(row) for row in items],
+        "page": page,
+        "per_page": per_page,
+        "total": total,
+        "has_prev": page > 1,
+        "has_next": ((page - 1) * per_page) + per_page < total,
+        "filters": {
+            "type": filters.type,
+            "channel": filters.channel,
+            "status": filters.status,
+            "start_date": None if filters.start_date is None else filters.start_date.isoformat(),
+            "end_date": None if filters.end_date is None else filters.end_date.isoformat(),
+        },
+    }
 
 
 @api_router.post("/admin/ensure-daily-generation")

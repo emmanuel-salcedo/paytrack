@@ -128,6 +128,35 @@
     </div>
     <form method="get" action="/notifications" class="inline-form">
       <label>
+        <span>Type</span>
+        <input type="text" name="log_type" value="{{ delivery_log_filters.type }}" placeholder="daily_summary">
+      </label>
+      <label>
+        <span>Channel</span>
+        <select name="log_channel">
+          <option value="" {% if not delivery_log_filters.channel %}selected{% endif %}>All</option>
+          <option value="in_app" {% if delivery_log_filters.channel == 'in_app' %}selected{% endif %}>in_app</option>
+          <option value="telegram" {% if delivery_log_filters.channel == 'telegram' %}selected{% endif %}>telegram</option>
+        </select>
+      </label>
+      <label>
+        <span>Status</span>
+        <select name="log_status">
+          <option value="" {% if not delivery_log_filters.status %}selected{% endif %}>All</option>
+          <option value="pending" {% if delivery_log_filters.status == 'pending' %}selected{% endif %}>pending</option>
+          <option value="sent" {% if delivery_log_filters.status == 'sent' %}selected{% endif %}>sent</option>
+          <option value="error" {% if delivery_log_filters.status == 'error' %}selected{% endif %}>error</option>
+        </select>
+      </label>
+      <label>
+        <span>Start</span>
+        <input type="date" name="log_start_date" value="{{ delivery_log_filters.start_date }}">
+      </label>
+      <label>
+        <span>End</span>
+        <input type="date" name="log_end_date" value="{{ delivery_log_filters.end_date }}">
+      </label>
+      <label>
         <span>Log Rows</span>
         <select name="log_per_page">
           <option value="10" {% if delivery_log_per_page == 10 %}selected{% endif %}>10</option>
@@ -140,6 +169,7 @@
       <input type="hidden" name="sort" value="{{ notifications_sort }}">
       <input type="hidden" name="log_page" value="1">
       <button type="submit">Apply</button>
+      <a class="link-btn" href="/notifications?page={{ notifications_page_num }}&per_page={{ notifications_per_page }}&sort={{ notifications_sort }}">Clear Log Filters</a>
     </form>
   </div>
 
@@ -178,10 +208,10 @@
       <span class="muted">Showing {{ delivery_logs|length }} of {{ delivery_log_total }} log rows (page {{ delivery_log_page_num }})</span>
       <div class="inline-form">
         {% if delivery_log_has_prev %}
-          <a class="link-btn" href="/notifications?page={{ notifications_page_num }}&per_page={{ notifications_per_page }}&sort={{ notifications_sort }}&log_page={{ delivery_log_page_num - 1 }}&log_per_page={{ delivery_log_per_page }}">Previous</a>
+          <a class="link-btn" href="/notifications?page={{ notifications_page_num }}&per_page={{ notifications_per_page }}&sort={{ notifications_sort }}&log_page={{ delivery_log_page_num - 1 }}&log_per_page={{ delivery_log_per_page }}&log_type={{ delivery_log_filters.type }}&log_channel={{ delivery_log_filters.channel }}&log_status={{ delivery_log_filters.status }}&log_start_date={{ delivery_log_filters.start_date }}&log_end_date={{ delivery_log_filters.end_date }}">Previous</a>
         {% endif %}
         {% if delivery_log_has_next %}
-          <a class="link-btn" href="/notifications?page={{ notifications_page_num }}&per_page={{ notifications_per_page }}&sort={{ notifications_sort }}&log_page={{ delivery_log_page_num + 1 }}&log_per_page={{ delivery_log_per_page }}">Next</a>
+          <a class="link-btn" href="/notifications?page={{ notifications_page_num }}&per_page={{ notifications_per_page }}&sort={{ notifications_sort }}&log_page={{ delivery_log_page_num + 1 }}&log_per_page={{ delivery_log_per_page }}&log_type={{ delivery_log_filters.type }}&log_channel={{ delivery_log_filters.channel }}&log_status={{ delivery_log_filters.status }}&log_start_date={{ delivery_log_filters.start_date }}&log_end_date={{ delivery_log_filters.end_date }}">Next</a>
         {% endif %}
       </div>
     </div>

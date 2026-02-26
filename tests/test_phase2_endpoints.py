@@ -719,6 +719,13 @@ def test_admin_notification_jobs_create_due_soon_overdue_and_guard(tmp_path) -> 
             paged_notifications = client.get("/notifications", params={"per_page": 1, "log_per_page": 1, "sort": "oldest"})
             assert paged_notifications.status_code == 200
             assert "Showing 1 of" in paged_notifications.text
+
+            filtered_logs_page = client.get(
+                "/notifications",
+                params={"log_channel": "telegram", "log_status": "sent", "log_per_page": 5},
+            )
+            assert filtered_logs_page.status_code == 200
+            assert "Clear Log Filters" in filtered_logs_page.text
     finally:
         app.dependency_overrides.clear()
 
@@ -825,5 +832,62 @@ def test_history_page_renders_and_filters(tmp_path) -> None:
             filtered_search = client.get("/history", params={"q": "Inter"})
             assert filtered_search.status_code == 200
             assert "Internet" in filtered_search.text
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_history_and_notification_logs_api_pagination_and_filters(tmp_path) -> None:
+    SessionLocal = _test_session_factory(tmp_path)
+
+    def override_get_db():
+        yield from _override_db(SessionLocal)
+
+    app.dependency_overrides[get_db_session] = override_get_db
+    try:
+        with TestClient(app) as client:
+            client.post(
+                "/api/payments",
+                json={
+                    "name": "Water",
+                    "expected_amount": "40.00",
+                    "initial_due_date": "2026-01-10",
+                    "recurrence_type": "weekly",
+                },
+            )
+            client.post("/api/admin/run-generation", json={"today": "2026-01-01", "horizon_days": 45})
+            client.post(
+                "/api/admin/run-notification-jobs",
+                params={"today": "2026-01-15", "now": "2026-01-15T08:00:00"},
+            )
+
+            history_api = client.get("/api/history", params={"page": 1, "per_page": 1, "sort": "due_desc"})
+            assert history_api.status_code == 200
+            history_payload = history_api.json()
+            assert history_payload["page"] == 1
+            assert history_payload["per_page"] == 1
+            assert "items" in history_payload
+            assert len(history_payload["items"]) <= 1
+
+            history_filtered = client.get("/api/history", params={"q": "Wat", "status": "scheduled"})
+            assert history_filtered.status_code == 200
+            assert all("Wat" in item["payment_name"] for item in history_filtered.json()["items"])
+
+            logs_api = client.get("/api/notification-logs", params={"page": 1, "per_page": 2})
+            assert logs_api.status_code == 200
+            logs_payload = logs_api.json()
+            assert logs_payload["page"] == 1
+            assert logs_payload["per_page"] == 2
+            assert "items" in logs_payload
+            assert len(logs_payload["items"]) <= 2
+
+            logs_filtered = client.get(
+                "/api/notification-logs",
+                params={"channel": "in_app", "status": "sent", "start_date": "2026-01-15", "end_date": "2026-01-15"},
+            )
+            assert logs_filtered.status_code == 200
+            for item in logs_filtered.json()["items"]:
+                assert item["channel"] == "in_app"
+                assert item["status"] == "sent"
+                assert item["bucket_date"] == "2026-01-15"
     finally:
         app.dependency_overrides.clear()

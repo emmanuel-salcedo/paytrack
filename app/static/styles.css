@@ -266,7 +266,7 @@ button:active {
 .payments-table th,
 .payments-table td {
   text-align: left;
-  padding: 0.6rem 0.45rem;
+  padding: 0.55rem 0.45rem;
   border-bottom: 1px solid rgba(148, 163, 184, 0.20);
   vertical-align: top;
 }
@@ -282,7 +282,43 @@ button:active {
 
 .compact-table {
   margin-top: 0.75rem;
-  font-size: 0.86rem;
+  font-size: 0.84rem;
+}
+
+.table-wrap {
+  overflow: auto;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 12px;
+  margin-top: 0.6rem;
+}
+
+.table-wrap .payments-table {
+  margin-top: 0;
+}
+
+.cycle-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: rgba(241, 245, 249, 0.92);
+  backdrop-filter: blur(4px);
+}
+
+.cycle-card .section-head {
+  margin-bottom: 0.2rem;
+}
+
+.cycle-card .section-head p {
+  margin: 0.1rem 0 0;
+  font-size: 0.8rem;
+}
+
+.cycle-count-badge {
+  white-space: nowrap;
+}
+
+.cycle-table tbody tr:hover {
+  background: rgba(17, 82, 212, 0.03);
 }
 
 .status-pill {
@@ -298,6 +334,25 @@ button:active {
 .actions-cell {
   min-width: 200px;
   vertical-align: top;
+}
+
+.action-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.action-group button,
+.actions-cell > form button {
+  padding: 0.35rem 0.55rem;
+  font-size: 0.78rem;
+  border-radius: 8px;
+}
+
+.actions-cell details {
+  margin-top: 0.35rem;
+  padding-top: 0.25rem;
+  border-top: 1px dashed rgba(148, 163, 184, 0.24);
 }
 
 details {

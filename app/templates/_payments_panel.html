@@ -11,25 +11,34 @@
       <div class="form-grid">
         <label>
           <span>Name</span>
-          <input type="text" name="name" required>
+          <input type="text" name="name" value="{{ payment_form_values.name }}" required>
+          {% if payment_form_errors.name %}<small class="field-error">{{ payment_form_errors.name }}</small>{% endif %}
         </label>
         <label>
           <span>Amount</span>
-          <input type="number" name="expected_amount" min="0" step="0.01" required>
+          <input type="number" name="expected_amount" min="0" step="0.01" value="{{ payment_form_values.expected_amount }}" required>
+          {% if payment_form_errors.expected_amount %}<small class="field-error">{{ payment_form_errors.expected_amount }}</small>{% endif %}
         </label>
         <label>
           <span>Initial Due Date</span>
-          <input type="date" name="initial_due_date" required>
+          <input type="date" name="initial_due_date" value="{{ payment_form_values.initial_due_date }}" required>
+          {% if payment_form_errors.initial_due_date %}<small class="field-error">{{ payment_form_errors.initial_due_date }}</small>{% endif %}
         </label>
         <label>
           <span>Recurrence</span>
           <select name="recurrence_type" required>
-            <option value="one_time">One-time</option>
-            <option value="weekly">Weekly</option>
-            <option value="biweekly">Bi-weekly</option>
-            <option value="monthly" selected>Monthly</option>
-            <option value="yearly">Yearly</option>
+            <option value="one_time" {% if payment_form_values.recurrence_type == "one_time" %}selected{% endif %}>One-time</option>
+            <option value="weekly" {% if payment_form_values.recurrence_type == "weekly" %}selected{% endif %}>Weekly</option>
+            <option value="biweekly" {% if payment_form_values.recurrence_type == "biweekly" %}selected{% endif %}>Bi-weekly</option>
+            <option value="monthly" {% if payment_form_values.recurrence_type == "monthly" %}selected{% endif %}>Monthly</option>
+            <option value="yearly" {% if payment_form_values.recurrence_type == "yearly" %}selected{% endif %}>Yearly</option>
           </select>
+          {% if payment_form_errors.recurrence_type %}<small class="field-error">{{ payment_form_errors.recurrence_type }}</small>{% endif %}
+        </label>
+        <label>
+          <span>Priority (optional)</span>
+          <input type="number" name="priority" step="1" value="{{ payment_form_values.priority }}">
+          {% if payment_form_errors.priority %}<small class="field-error">{{ payment_form_errors.priority }}</small>{% endif %}
         </label>
       </div>
       <button type="submit">Add Payment</button>
@@ -61,33 +70,89 @@
               <td>{{ "Active" if payment.is_active else "Archived" }}</td>
               <td>
                 {% if payment.is_active %}
-                  <form
-                    hx-post="/payments/{{ payment.id }}/paid-off"
-                    hx-target="#interactive-panels"
-                    hx-swap="outerHTML"
-                    method="post"
-                    class="inline-form"
-                  >
-                    <button type="submit">Paid Off</button>
-                  </form>
-                  <details>
-                    <summary>Edit Date</summary>
+                  <div class="inline-form">
                     <form
                       hx-post="/payments/{{ payment.id }}/paid-off"
                       hx-target="#interactive-panels"
                       hx-swap="outerHTML"
                       method="post"
-                      class="stack"
+                      class="inline-form"
                     >
-                      <label>
-                        <span>Paid Off Date</span>
-                        <input type="date" name="paid_off_date">
-                      </label>
-                      <button type="submit">Apply</button>
+                      <button type="submit">Paid Off</button>
                     </form>
-                  </details>
+                    <details {% if payment_edit_target_id == payment.id and payment_edit_errors %}open{% endif %}>
+                      <summary>Edit Payment</summary>
+                      <form
+                        hx-post="/payments/{{ payment.id }}/update"
+                        hx-target="#interactive-panels"
+                        hx-swap="outerHTML"
+                        method="post"
+                        class="stack payment-edit-form"
+                      >
+                        {% set edit_values = payment_edit_values if payment_edit_target_id == payment.id else {} %}
+                        {% set edit_errors = payment_edit_errors if payment_edit_target_id == payment.id else {} %}
+                        <label>
+                          <span>Name</span>
+                          <input type="text" name="name" value="{{ edit_values.get('name', payment.name) }}" required>
+                          {% if edit_errors.get('name') %}<small class="field-error">{{ edit_errors.get('name') }}</small>{% endif %}
+                        </label>
+                        <label>
+                          <span>Amount</span>
+                          <input type="number" name="expected_amount" min="0" step="0.01" value="{{ edit_values.get('expected_amount', '%.2f'|format(payment.expected_amount)) }}" required>
+                          {% if edit_errors.get('expected_amount') %}<small class="field-error">{{ edit_errors.get('expected_amount') }}</small>{% endif %}
+                        </label>
+                        <label>
+                          <span>Initial Due Date</span>
+                          <input type="date" name="initial_due_date" value="{{ edit_values.get('initial_due_date', payment.initial_due_date|string) }}" required>
+                          {% if edit_errors.get('initial_due_date') %}<small class="field-error">{{ edit_errors.get('initial_due_date') }}</small>{% endif %}
+                        </label>
+                        <label>
+                          <span>Recurrence</span>
+                          {% set edit_recur = edit_values.get('recurrence_type', payment.recurrence_type) %}
+                          <select name="recurrence_type" required>
+                            <option value="one_time" {% if edit_recur == "one_time" %}selected{% endif %}>One-time</option>
+                            <option value="weekly" {% if edit_recur == "weekly" %}selected{% endif %}>Weekly</option>
+                            <option value="biweekly" {% if edit_recur == "biweekly" %}selected{% endif %}>Bi-weekly</option>
+                            <option value="monthly" {% if edit_recur == "monthly" %}selected{% endif %}>Monthly</option>
+                            <option value="yearly" {% if edit_recur == "yearly" %}selected{% endif %}>Yearly</option>
+                          </select>
+                          {% if edit_errors.get('recurrence_type') %}<small class="field-error">{{ edit_errors.get('recurrence_type') }}</small>{% endif %}
+                        </label>
+                        <label>
+                          <span>Priority</span>
+                          <input type="number" name="priority" step="1" value="{{ edit_values.get('priority', payment.priority if payment.priority is not none else '') }}">
+                          {% if edit_errors.get('priority') %}<small class="field-error">{{ edit_errors.get('priority') }}</small>{% endif %}
+                        </label>
+                        <button type="submit">Save Changes</button>
+                      </form>
+                    </details>
+                    <details>
+                      <summary>Paid Off Date</summary>
+                      <form
+                        hx-post="/payments/{{ payment.id }}/paid-off"
+                        hx-target="#interactive-panels"
+                        hx-swap="outerHTML"
+                        method="post"
+                        class="stack"
+                      >
+                        <label>
+                          <span>Paid Off Date</span>
+                          <input type="date" name="paid_off_date">
+                        </label>
+                        <button type="submit">Apply</button>
+                      </form>
+                    </details>
+                  </div>
                 {% else %}
-                  <span class="muted">—</span>
+                  <form
+                    hx-post="/payments/{{ payment.id }}/reactivate"
+                    hx-target="#interactive-panels"
+                    hx-swap="outerHTML"
+                    method="post"
+                    class="inline-form"
+                  >
+                    <button type="submit">Reactivate</button>
+                  </form>
                 {% endif %}
               </td>
             </tr>

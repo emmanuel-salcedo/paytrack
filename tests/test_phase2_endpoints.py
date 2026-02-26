@@ -271,6 +271,18 @@ def test_web_htmx_payments_and_generation_panels(tmp_path) -> None:
             assert "Current Cycle" in home.text
             assert "Next Cycle Preview" in home.text
 
+            dashboard_page = client.get("/dashboard")
+            payments_page = client.get("/payments")
+            settings_page = client.get("/settings")
+            notifications_page = client.get("/notifications")
+            assert dashboard_page.status_code == 200
+            assert payments_page.status_code == 200
+            assert settings_page.status_code == 200
+            assert notifications_page.status_code == 200
+            assert "Manage Payments" in payments_page.text
+            assert "Settings" in settings_page.text
+            assert "Notifications" in notifications_page.text
+
             create_resp = client.post(
                 "/payments",
                 data={
@@ -285,6 +297,21 @@ def test_web_htmx_payments_and_generation_panels(tmp_path) -> None:
             assert "Gym" in create_resp.text
             assert "interactive-panels" in create_resp.text
             assert "payments-panel" in create_resp.text
+
+            invalid_create = client.post(
+                "/payments",
+                data={
+                    "name": "",
+                    "expected_amount": "abc",
+                    "initial_due_date": "not-a-date",
+                    "recurrence_type": "bad",
+                },
+                headers={"HX-Request": "true"},
+            )
+            assert invalid_create.status_code == 200
+            assert "Enter a valid amount." in invalid_create.text
+            assert "Enter a valid date." in invalid_create.text
+            assert "Choose a valid recurrence." in invalid_create.text
 
             gen_resp = client.post(
                 "/admin/run-generation",
@@ -331,6 +358,43 @@ def test_web_htmx_payments_and_generation_panels(tmp_path) -> None:
             assert paid_off_web.status_code == 200
             assert "Payment marked paid off." in paid_off_web.text
             assert "Archived" in paid_off_web.text
+
+            reactivate_web = client.post(
+                f"/payments/{gym_payment['id']}/reactivate",
+                data={},
+                headers={"HX-Request": "true"},
+            )
+            assert reactivate_web.status_code == 200
+            assert "Payment reactivated." in reactivate_web.text
+
+            edit_invalid_web = client.post(
+                f"/payments/{gym_payment['id']}/update",
+                data={
+                    "name": "",
+                    "expected_amount": "-1",
+                    "initial_due_date": "bad-date",
+                    "recurrence_type": "oops",
+                },
+                headers={"HX-Request": "true"},
+            )
+            assert edit_invalid_web.status_code == 200
+            assert "Payment update failed." in edit_invalid_web.text
+            assert "Name is required." in edit_invalid_web.text
+
+            edit_valid_web = client.post(
+                f"/payments/{gym_payment['id']}/update",
+                data={
+                    "name": "Gym Plus",
+                    "expected_amount": "30.00",
+                    "initial_due_date": "2026-01-09",
+                    "recurrence_type": "weekly",
+                    "priority": "2",
+                },
+                headers={"HX-Request": "true"},
+            )
+            assert edit_valid_web.status_code == 200
+            assert "Payment updated." in edit_valid_web.text
+            assert "Gym Plus" in edit_valid_web.text
 
             guarded_first = client.post(
                 "/admin/run-generation-once-today",

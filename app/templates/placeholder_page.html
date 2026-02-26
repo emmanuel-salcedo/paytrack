@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+
+{% block title %}PayTrack | {{ page_title }}{% endblock %}
+
+{% block content %}
+<section class="hero">
+  <span class="pill">{{ page_tag }}</span>
+  <h1>{{ page_title }}</h1>
+  <p class="muted">{{ page_description }}</p>
+</section>
+
+<section class="card">
+  <h2>Coming Next</h2>
+  <p class="muted">This route is split out and ready for Phase 4 implementation aligned to the mockup references.</p>
+</section>
+{% endblock %}

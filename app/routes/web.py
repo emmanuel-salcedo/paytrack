@@ -5,6 +5,7 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, Form, Request
+from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
@@ -14,8 +15,11 @@ from app.services.actions_service import (
     ActionValidationError,
     mark_occurrence_paid,
     mark_payment_paid_off,
+    reactivate_payment,
     skip_occurrence,
     undo_mark_paid,
+    UpdatePaymentInput,
+    update_payment_and_rebuild_future_scheduled,
 )
 from app.services.cycle_views_service import get_cycle_snapshot
 from app.services.history_service import HistoryFilters, list_occurrence_history
@@ -34,6 +38,11 @@ def _build_dashboard_context(
     db: Session,
     *,
     payment_error: str | None = None,
+    payment_form_errors: dict[str, str] | None = None,
+    payment_form_values: dict[str, str] | None = None,
+    payment_edit_target_id: int | None = None,
+    payment_edit_errors: dict[str, str] | None = None,
+    payment_edit_values: dict[str, str] | None = None,
     generation_state: dict[str, object] | None = None,
     action_notice: str | None = None,
     action_error: str | None = None,
@@ -50,21 +59,126 @@ def _build_dashboard_context(
         "current_cycle_snapshot": current_cycle_snapshot,
         "next_cycle_snapshot": next_cycle_snapshot,
         "payment_error": payment_error,
+        "payment_form_errors": payment_form_errors or {},
+        "payment_form_values": payment_form_values
+        or {
+            "name": "",
+            "expected_amount": "",
+            "initial_due_date": "",
+            "recurrence_type": "monthly",
+            "priority": "",
+        },
+        "payment_edit_target_id": payment_edit_target_id,
+        "payment_edit_errors": payment_edit_errors or {},
+        "payment_edit_values": payment_edit_values or {},
         "generation_state": generation_state,
         "action_notice": action_notice,
         "action_error": action_error,
     }
 
 
-@web_router.get("/")
-def home(request: Request, db: Session = Depends(get_db_session)):
-    # First-request-of-day fallback: safe to call on every request because job_runs guard de-dupes.
-    run_generate_occurrences_once_per_day_in_session_if_ready(db, today=date.today())
+def _parse_payment_form_fields(
+    *,
+    name: str,
+    expected_amount: str,
+    initial_due_date: str,
+    recurrence_type: str,
+    priority: str = "",
+) -> tuple[UpdatePaymentInput | None, dict[str, str], dict[str, str]]:
+    errors: dict[str, str] = {}
+    values = {
+        "name": name,
+        "expected_amount": expected_amount,
+        "initial_due_date": initial_due_date,
+        "recurrence_type": recurrence_type,
+        "priority": priority,
+    }
+
+    clean_name = name.strip()
+    if not clean_name:
+        errors["name"] = "Name is required."
+
+    amount_value: Decimal | None = None
+    try:
+        amount_value = Decimal(expected_amount)
+        if amount_value < 0:
+            errors["expected_amount"] = "Amount must be non-negative."
+    except (InvalidOperation, ValueError):
+        errors["expected_amount"] = "Enter a valid amount."
+
+    due_date_value: date | None = None
+    try:
+        due_date_value = date.fromisoformat(initial_due_date)
+    except (TypeError, ValueError):
+        errors["initial_due_date"] = "Enter a valid date."
+
+    if recurrence_type not in {"one_time", "weekly", "biweekly", "monthly", "yearly"}:
+        errors["recurrence_type"] = "Choose a valid recurrence."
+
+    priority_value: int | None = None
+    if priority.strip():
+        try:
+            priority_value = int(priority)
+        except ValueError:
+            errors["priority"] = "Priority must be a whole number."
+
+    if errors:
+        return None, errors, values
+
+    assert amount_value is not None and due_date_value is not None
+    return (
+        UpdatePaymentInput(
+            name=clean_name,
+            expected_amount=amount_value,
+            initial_due_date=due_date_value,
+            recurrence_type=recurrence_type,
+            priority=priority_value,
+        ),
+        {},
+        values,
+    )
+
+
+def _render_dashboard_page(
+    request: Request,
+    db: Session,
+    **context_overrides,
+):
     return templates.TemplateResponse(
         request,
         "index.html",
-        _build_dashboard_context(db),
+        _build_dashboard_context(db, **context_overrides),
     )
+
+
+def _render_payments_page(
+    request: Request,
+    db: Session,
+    **context_overrides,
+):
+    return templates.TemplateResponse(
+        request,
+        "payments.html",
+        _build_dashboard_context(db, **context_overrides),
+    )
+
+
+@web_router.get("/")
+def root_redirect() -> RedirectResponse:
+    return RedirectResponse(url="/dashboard", status_code=307)
+
+
+@web_router.get("/dashboard")
+def dashboard_page(request: Request, db: Session = Depends(get_db_session)):
+    # First-request-of-day fallback: safe to call on every request because job_runs guard de-dupes.
+    run_generate_occurrences_once_per_day_in_session_if_ready(db, today=date.today())
+    return _render_dashboard_page(request, db)
+
+
+@web_router.get("/payments")
+def payments_page(request: Request, db: Session = Depends(get_db_session)):
+    run_generate_occurrences_once_per_day_in_session_if_ready(db, today=date.today())
+    return _render_payments_page(request, db)
 
 
 def _render_interactive_panels(
@@ -72,6 +186,11 @@ def _render_interactive_panels(
     db: Session,
     *,
     payment_error: str | None = None,
+    payment_form_errors: dict[str, str] | None = None,
+    payment_form_values: dict[str, str] | None = None,
+    payment_edit_target_id: int | None = None,
+    payment_edit_errors: dict[str, str] | None = None,
+    payment_edit_values: dict[str, str] | None = None,
     generation_state: dict[str, object] | None = None,
     action_notice: str | None = None,
     action_error: str | None = None,
@@ -82,6 +201,11 @@ def _render_interactive_panels(
         _build_dashboard_context(
             db,
             payment_error=payment_error,
+            payment_form_errors=payment_form_errors,
+            payment_form_values=payment_form_values,
+            payment_edit_target_id=payment_edit_target_id,
+            payment_edit_errors=payment_edit_errors,
+            payment_edit_values=payment_edit_values,
             generation_state=generation_state,
             action_notice=action_notice,
             action_error=action_error,
@@ -106,18 +230,33 @@ def create_payment_web(
     expected_amount: str = Form(...),
     initial_due_date: str = Form(...),
     recurrence_type: str = Form(...),
+    priority: str = Form(""),
     db: Session = Depends(get_db_session),
 ):
     try:
-        amount = Decimal(expected_amount)
-        due_date = date.fromisoformat(initial_due_date)
+        parsed, field_errors, field_values = _parse_payment_form_fields(
+            name=name,
+            expected_amount=expected_amount,
+            initial_due_date=initial_due_date,
+            recurrence_type=recurrence_type,
+            priority=priority,
+        )
+        if parsed is None:
+            return _render_interactive_panels(
+                request,
+                db,
+                payment_form_errors=field_errors,
+                payment_form_values=field_values,
+                action_error="Payment create failed.",
+            )
         create_payment(
             db,
             CreatePaymentInput(
-                name=name,
-                expected_amount=amount,
-                initial_due_date=due_date,
-                recurrence_type=recurrence_type,
+                name=parsed.name,
+                expected_amount=parsed.expected_amount,
+                initial_due_date=parsed.initial_due_date,
+                recurrence_type=parsed.recurrence_type,
+                priority=parsed.priority,
             ),
         )
         return _render_interactive_panels(request, db, action_notice="Payment added.")
@@ -255,6 +394,77 @@ def mark_paid_off_web(
         return _render_interactive_panels(request, db, action_error=str(exc))
 
 
+@web_router.post("/payments/{payment_id}/reactivate")
+def reactivate_payment_web(
+    request: Request,
+    payment_id: int,
+    db: Session = Depends(get_db_session),
+):
+    try:
+        result = reactivate_payment(db, payment_id=payment_id, today=date.today())
+        return _render_interactive_panels(
+            request,
+            db,
+            action_notice=(
+                f"Payment reactivated. Generated {result.generated_occurrences_count} future occurrences."
+            ),
+        )
+    except ActionValidationError as exc:
+        return _render_interactive_panels(request, db, action_error=str(exc))
+
+
+@web_router.post("/payments/{payment_id}/update")
+def update_payment_web(
+    request: Request,
+    payment_id: int,
+    name: str = Form(...),
+    expected_amount: str = Form(...),
+    initial_due_date: str = Form(...),
+    recurrence_type: str = Form(...),
+    priority: str = Form(""),
+    db: Session = Depends(get_db_session),
+):
+    parsed, field_errors, field_values = _parse_payment_form_fields(
+        name=name,
+        expected_amount=expected_amount,
+        initial_due_date=initial_due_date,
+        recurrence_type=recurrence_type,
+        priority=priority,
+    )
+    if parsed is None:
+        return _render_interactive_panels(
+            request,
+            db,
+            payment_edit_target_id=payment_id,
+            payment_edit_errors=field_errors,
+            payment_edit_values=field_values,
+            action_error="Payment update failed.",
+        )
+
+    try:
+        result = update_payment_and_rebuild_future_scheduled(
+            db,
+            payment_id=payment_id,
+            data=parsed,
+            today=date.today(),
+        )
+        return _render_interactive_panels(
+            request,
+            db,
+            action_notice=(
+                f"Payment updated. Rebuilt {result.generated_occurrences_count} future scheduled occurrences."
+            ),
+        )
+    except ActionValidationError as exc:
+        return _render_interactive_panels(
+            request,
+            db,
+            payment_edit_target_id=payment_id,
+            payment_edit_values=field_values,
+            action_error=str(exc),
+        )
+
+
 @web_router.get("/history")
 def history_page(
     request: Request,
@@ -284,5 +494,31 @@ def history_page(
                 "end_date": end_date or "",
                 "q": q or "",
             },
+        },
+    )
+
+
+@web_router.get("/settings")
+def settings_page(request: Request):
+    return templates.TemplateResponse(
+        request,
+        "placeholder_page.html",
+        {
+            "page_title": "Settings",
+            "page_tag": "Phase 4",
+            "page_description": "Notification defaults, Telegram configuration, timezone, and pay schedule settings will move here.",
+        },
+    )
+
+
+@web_router.get("/notifications")
+def notifications_page(request: Request):
+    return templates.TemplateResponse(
+        request,
+        "placeholder_page.html",
+        {
+            "page_title": "Notifications",
+            "page_tag": "Phase 4",
+            "page_description": "In-app notifications center with unread state and filters will live here.",
         },
     )

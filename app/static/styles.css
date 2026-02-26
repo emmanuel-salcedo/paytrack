@@ -42,6 +42,11 @@ body {
   padding: 0.3rem 0.7rem;
 }
 
+.top-nav a.active {
+  background: var(--accent);
+  color: #fff;
+}
+
 .hero {
   background: linear-gradient(135deg, rgba(255, 250, 240, 0.95), rgba(255, 243, 224, 0.9));
   border: 1px solid var(--border);
@@ -81,6 +86,11 @@ label {
   display: grid;
   gap: 0.25rem;
   font-size: 0.9rem;
+}
+
+.field-error {
+  color: #b91c1c;
+  font-size: 0.78rem;
 }
 
 input, select, button {
@@ -167,6 +177,11 @@ summary {
   cursor: pointer;
   color: var(--muted);
   font-size: 0.85rem;
+}
+
+.payment-edit-form {
+  min-width: 240px;
+  margin-top: 0.4rem;
 }
 
 .status-scheduled {

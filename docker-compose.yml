@@ -1,0 +1,18 @@
+services:
+  paytrack:
+    build: .
+    container_name: paytrack
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: sqlite:////data/paytrack.db
+      TZ: America/Los_Angeles
+      DUE_SOON_DAYS: "5"
+      DAILY_SUMMARY_TIME: "07:00"
+    volumes:
+      - paytrack_data:/data
+    restart: unless-stopped
+
+volumes:
+  paytrack_data:
+

@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+
+{% block title %}PayTrack | Phase 0{% endblock %}
+
+{% block content %}
+<section class="hero">
+  <span class="pill">Phase 0 Baseline</span>
+  <h1>PayTrack</h1>
+  <p class="muted">FastAPI + Jinja2 + HTMX + SQLite/Alembic foundation is wired.</p>
+</section>
+
+<section class="grid" aria-label="Application defaults">
+  <article class="card">
+    <h2>Pay Schedule</h2>
+    {% if schedule %}
+      <div class="row"><span>Anchor</span><strong>{{ schedule.anchor_payday_date }}</strong></div>
+      <div class="row"><span>Timezone</span><strong>{{ schedule.timezone }}</strong></div>
+    {% else %}
+      <p class="muted">No pay schedule seeded yet. Run migrations, then reload.</p>
+    {% endif %}
+  </article>
+
+  <article class="card">
+    <h2>App Settings</h2>
+    {% if app_settings %}
+      <div class="row"><span>Due soon</span><strong>{{ app_settings.due_soon_days }} days</strong></div>
+      <div class="row"><span>Daily summary</span><strong>{{ app_settings.daily_summary_time }}</strong></div>
+      <div class="row"><span>Telegram</span><strong>{{ "Enabled" if app_settings.telegram_enabled else "Disabled" }}</strong></div>
+    {% else %}
+      <p class="muted">Defaults are seeded on startup after schema exists.</p>
+    {% endif %}
+  </article>
+
+  <article class="card">
+    <h2>Health</h2>
+    <p class="muted">API endpoint available at <code>/api/health</code>.</p>
+    <button
+      hx-get="/api/health"
+      hx-target="#health-result"
+      hx-swap="innerHTML"
+      type="button"
+    >
+      Check health
+    </button>
+    <pre id="health-result" class="muted" aria-live="polite"></pre>
+  </article>
+</section>
+{% endblock %}
+

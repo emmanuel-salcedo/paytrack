@@ -47,6 +47,14 @@ class NotificationLogFilters:
     end_date: date | None = None
 
 
+@dataclass(frozen=True)
+class NotificationFilters:
+    type: str | None = None
+    read_state: str | None = None
+    start_date: date | None = None
+    end_date: date | None = None
+
+
 def create_in_app_notification(
     session: Session,
     *,
@@ -142,8 +150,29 @@ def finalize_notification_log_entry(
     return row
 
 
-def count_notifications(session: Session) -> int:
-    return int(session.scalar(select(func.count()).select_from(Notification)) or 0)
+def _apply_notification_filters(stmt: Select, filters: NotificationFilters | None) -> Select:
+    if filters is None:
+        return stmt
+    if filters.type:
+        stmt = stmt.where(Notification.type == filters.type)
+    if filters.read_state == "read":
+        stmt = stmt.where(Notification.is_read.is_(True))
+    elif filters.read_state == "unread":
+        stmt = stmt.where(Notification.is_read.is_(False))
+    if filters.start_date:
+        stmt = stmt.where(func.date(Notification.created_at) >= filters.start_date)
+    if filters.end_date:
+        stmt = stmt.where(func.date(Notification.created_at) <= filters.end_date)
+    return stmt
+
+
+def count_notifications(
+    session: Session,
+    *,
+    filters: NotificationFilters | None = None,
+) -> int:
+    stmt = _apply_notification_filters(select(func.count()).select_from(Notification), filters)
+    return int(session.scalar(stmt) or 0)
 
 
 def list_notifications(
@@ -152,8 +181,9 @@ def list_notifications(
     limit: int = 200,
     offset: int = 0,
     sort: str = "newest",
+    filters: NotificationFilters | None = None,
 ) -> list[NotificationRowView]:
-    stmt = select(Notification)
+    stmt = _apply_notification_filters(select(Notification), filters)
     if sort == "oldest":
         stmt = stmt.order_by(Notification.created_at.asc(), Notification.id.asc())
     elif sort == "unread_first":

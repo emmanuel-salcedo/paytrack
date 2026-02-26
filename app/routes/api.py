@@ -28,10 +28,17 @@ from app.services.notification_jobs_service import (
     run_notification_jobs_once_per_day_in_session_if_ready,
 )
 from app.services.notifications_service import (
+    NotificationFilters,
     NotificationLogFilters,
+    NotificationsValidationError,
     count_notification_logs_filtered,
+    count_notifications,
     create_in_app_notification,
+    get_unread_notifications_count,
     list_notification_logs,
+    list_notifications,
+    mark_all_notifications_read,
+    mark_notification_read,
 )
 from app.services.occurrence_generation import (
     generate_occurrences_ahead,
@@ -204,6 +211,18 @@ def _serialize_notification_log_row(row) -> dict[str, object]:
         "error_message": row.error_message,
         "delivered_at": None if row.delivered_at is None else row.delivered_at.isoformat(),
         "created_at": row.created_at.isoformat(),
+    }
+
+
+def _serialize_notification_row(row) -> dict[str, object]:
+    return {
+        "id": row.id,
+        "type": row.type,
+        "title": row.title,
+        "body": row.body,
+        "is_read": row.is_read,
+        "created_at": row.created_at.isoformat(),
+        "read_at": None if row.read_at is None else row.read_at.isoformat(),
     }
 
 
@@ -451,6 +470,76 @@ def notification_logs_api(
             "end_date": None if filters.end_date is None else filters.end_date.isoformat(),
         },
     }
+
+
+@api_router.get("/notifications")
+def notifications_api(
+    page: int = Query(default=1, ge=1),
+    per_page: int = Query(default=20, ge=1, le=100),
+    sort: str = Query(default="newest"),
+    type: str | None = Query(default=None),
+    read_state: str | None = Query(default=None),
+    start_date: date | None = Query(default=None),
+    end_date: date | None = Query(default=None),
+    db: Session = Depends(get_db_session),
+) -> dict[str, object]:
+    filters = NotificationFilters(
+        type=(type or "").strip() or None,
+        read_state=(read_state or "").strip() or None,
+        start_date=start_date,
+        end_date=end_date,
+    )
+    total = count_notifications(db, filters=filters)
+    items = list_notifications(
+        db,
+        limit=per_page,
+        offset=(page - 1) * per_page,
+        sort=sort,
+        filters=filters,
+    )
+    return {
+        "items": [_serialize_notification_row(row) for row in items],
+        "page": page,
+        "per_page": per_page,
+        "sort": sort,
+        "total": total,
+        "has_prev": page > 1,
+        "has_next": ((page - 1) * per_page) + per_page < total,
+        "filters": {
+            "type": filters.type,
+            "read_state": filters.read_state,
+            "start_date": None if filters.start_date is None else filters.start_date.isoformat(),
+            "end_date": None if filters.end_date is None else filters.end_date.isoformat(),
+        },
+    }
+
+
+@api_router.get("/notifications/unread-count")
+def notifications_unread_count_api(db: Session = Depends(get_db_session)) -> dict[str, int]:
+    return {"unread_count": get_unread_notifications_count(db)}
+
+
+@api_router.post("/notifications/{notification_id}/read")
+def notifications_mark_read_api(notification_id: int, db: Session = Depends(get_db_session)) -> dict[str, object]:
+    try:
+        row = mark_notification_read(db, notification_id=notification_id, now=datetime.now())
+    except NotificationsValidationError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return {
+        "id": row.id,
+        "type": row.type,
+        "title": row.title,
+        "body": row.body,
+        "is_read": row.is_read,
+        "created_at": row.created_at.isoformat(),
+        "read_at": None if row.read_at is None else row.read_at.isoformat(),
+    }
+
+
+@api_router.post("/notifications/mark-all-read")
+def notifications_mark_all_read_api(db: Session = Depends(get_db_session)) -> dict[str, object]:
+    count = mark_all_notifications_read(db, now=datetime.now())
+    return {"marked_count": count}
 
 
 @api_router.post("/admin/ensure-daily-generation")

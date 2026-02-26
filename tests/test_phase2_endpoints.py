@@ -891,3 +891,60 @@ def test_history_and_notification_logs_api_pagination_and_filters(tmp_path) -> N
                 assert item["bucket_date"] == "2026-01-15"
     finally:
         app.dependency_overrides.clear()
+
+
+def test_notifications_api_pagination_filters_and_actions(tmp_path) -> None:
+    SessionLocal = _test_session_factory(tmp_path)
+
+    def override_get_db():
+        yield from _override_db(SessionLocal)
+
+    app.dependency_overrides[get_db_session] = override_get_db
+    try:
+        with SessionLocal() as session:
+            session.add_all(
+                [
+                    Notification(type="daily_summary", title="Daily Summary", body="Summary body", is_read=False),
+                    Notification(type="due_soon", title="Due Soon", body="Due soon body", is_read=False),
+                    Notification(type="overdue", title="Overdue", body="Overdue body", is_read=True),
+                ]
+            )
+            session.commit()
+
+        with TestClient(app) as client:
+            list_resp = client.get("/api/notifications", params={"page": 1, "per_page": 2, "sort": "newest"})
+            assert list_resp.status_code == 200
+            payload = list_resp.json()
+            assert payload["page"] == 1
+            assert payload["per_page"] == 2
+            assert len(payload["items"]) <= 2
+
+            unread_only = client.get("/api/notifications", params={"read_state": "unread"})
+            assert unread_only.status_code == 200
+            assert all(item["is_read"] is False for item in unread_only.json()["items"])
+
+            typed = client.get("/api/notifications", params={"type": "due_soon"})
+            assert typed.status_code == 200
+            assert all(item["type"] == "due_soon" for item in typed.json()["items"])
+
+            unread_count_before = client.get("/api/notifications/unread-count")
+            assert unread_count_before.status_code == 200
+            assert unread_count_before.json()["unread_count"] == 2
+
+            mark_one = client.post("/api/notifications/1/read")
+            assert mark_one.status_code == 200
+            assert mark_one.json()["is_read"] is True
+
+            unread_count_after_one = client.get("/api/notifications/unread-count")
+            assert unread_count_after_one.status_code == 200
+            assert unread_count_after_one.json()["unread_count"] == 1
+
+            mark_all = client.post("/api/notifications/mark-all-read")
+            assert mark_all.status_code == 200
+            assert mark_all.json()["marked_count"] == 1
+
+            unread_count_final = client.get("/api/notifications/unread-count")
+            assert unread_count_final.status_code == 200
+            assert unread_count_final.json()["unread_count"] == 0
+    finally:
+        app.dependency_overrides.clear()

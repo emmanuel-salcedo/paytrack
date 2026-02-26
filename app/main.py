@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from contextlib import asynccontextmanager
+from datetime import date
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -10,6 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from app.logging_config import configure_logging
 from app.routes.api import api_router
 from app.routes.web import web_router
+from app.services.occurrence_generation import generate_occurrences_ahead_if_ready
 from app.services.seeding import seed_defaults_if_ready
 
 configure_logging()
@@ -20,6 +22,15 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     logger.info("Starting PayTrack application")
     seed_defaults_if_ready()
+    generation_result = generate_occurrences_ahead_if_ready(today=date.today())
+    if generation_result is not None:
+        logger.info(
+            "Occurrence generation startup run completed",
+            extra={
+                "generated_count": generation_result.generated_count,
+                "skipped_existing_count": generation_result.skipped_existing_count,
+            },
+        )
     yield
     logger.info("Shutting down PayTrack application")
 
@@ -36,4 +47,3 @@ def create_app() -> FastAPI:
 
 
 app = create_app()
-

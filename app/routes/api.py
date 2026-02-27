@@ -43,6 +43,7 @@ from app.services.notifications_service import (
     list_notifications,
     mark_all_notifications_read,
     mark_notification_read,
+    mark_notification_unread,
 )
 from app.services.occurrence_generation import (
     generate_occurrences_ahead,
@@ -248,6 +249,42 @@ class UnreadCountResponse(BaseModel):
 
 class MarkAllReadResponse(BaseModel):
     marked_count: int
+
+
+class ManualGenerationResponse(BaseModel):
+    generated_count: int
+    skipped_existing_count: int
+    range_start: str
+    range_end: str
+    horizon_days: int
+
+
+class GuardedGenerationResponse(BaseModel):
+    job_name: str
+    run_date: str | None = None
+    ran: bool
+    horizon_days: int
+    trigger: str | None = None
+    ready: bool | None = None
+    generated_count: int | None = None
+    skipped_existing_count: int | None = None
+    range_start: str | None = None
+    range_end: str | None = None
+
+
+class NotificationJobsRunResponse(BaseModel):
+    ready: bool
+    ran: bool
+    job_name: str
+    run_date: str | None = None
+    daily_summary_created: int | None = None
+    due_soon_created: int | None = None
+    overdue_created: int | None = None
+    telegram_sent: int | None = None
+    telegram_errors: int | None = None
+    daily_summary_deferred_before_time: bool | None = None
+    daily_summary_ready_time: str | None = None
+    forced_daily_summary: bool | None = None
 
 
 def _serialize_settings(db: Session) -> dict[str, object]:
@@ -458,7 +495,7 @@ def send_test_telegram_message_api(db: Session = Depends(get_db_session)) -> dic
     }
 
 
-@api_router.post("/admin/run-generation")
+@api_router.post("/admin/run-generation", response_model=ManualGenerationResponse)
 def manual_run_generation(payload: ManualGenerationRequest, db: Session = Depends(get_db_session)) -> dict[str, object]:
     run_today = payload.today or date.today()
     result = generate_occurrences_ahead(db, today=run_today, horizon_days=payload.horizon_days)
@@ -471,7 +508,7 @@ def manual_run_generation(payload: ManualGenerationRequest, db: Session = Depend
     }
 
 
-@api_router.post("/admin/run-generation-once-today")
+@api_router.post("/admin/run-generation-once-today", response_model=GuardedGenerationResponse)
 def manual_run_generation_once_today(
     payload: ManualGenerationRequest,
     db: Session = Depends(get_db_session),
@@ -557,6 +594,69 @@ def history_api(
             "q": (q or "").strip() or None,
         },
     }
+
+
+@api_router.get("/history/export")
+def history_export_api(
+    format: str = Query(default="csv"),
+    status: str | None = Query(default=None),
+    start_date: date | None = Query(default=None),
+    end_date: date | None = Query(default=None),
+    q: str | None = Query(default=None),
+    sort: str = Query(default="due_desc"),
+    db: Session = Depends(get_db_session),
+) -> Response:
+    validated_sort = _require_enum(sort, field="sort", allowed=HISTORY_SORT_VALUES) or "due_desc"
+    normalized_format = (format or "").strip().lower()
+    if normalized_format not in {"csv", "jsonl"}:
+        raise HTTPException(status_code=400, detail="Invalid format. Allowed: csv, jsonl.")
+
+    filters = HistoryFilters(
+        status=(status or "").strip() or None,
+        start_date=start_date,
+        end_date=end_date,
+        q=(q or "").strip() or None,
+    )
+    page = list_occurrence_history_page(db, filters=filters, limit=1, offset=0, sort=validated_sort)
+    rows = list_occurrence_history_page(
+        db,
+        filters=filters,
+        limit=max(page.total_count, 1),
+        offset=0,
+        sort=validated_sort,
+    ).rows
+    serialized_rows = [_serialize_history_row(row) for row in rows]
+
+    if normalized_format == "jsonl":
+        payload = "\n".join(json.dumps(item, separators=(",", ":")) for item in serialized_rows)
+        return Response(
+            content=payload + ("\n" if payload else ""),
+            media_type="application/x-ndjson",
+            headers={"Content-Disposition": "attachment; filename=history.jsonl"},
+        )
+
+    buffer = io.StringIO()
+    writer = csv.DictWriter(
+        buffer,
+        fieldnames=[
+            "occurrence_id",
+            "payment_id",
+            "payment_name",
+            "due_date",
+            "status",
+            "expected_amount",
+            "amount_paid",
+            "paid_date",
+        ],
+    )
+    writer.writeheader()
+    for item in serialized_rows:
+        writer.writerow(item)
+    return Response(
+        content=buffer.getvalue(),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=history.csv"},
+    )
 
 
 @api_router.get("/notification-logs", response_model=NotificationLogListResponse)
@@ -737,13 +837,30 @@ def notifications_mark_read_api(notification_id: int, db: Session = Depends(get_
     }
 
 
+@api_router.post("/notifications/{notification_id}/unread", response_model=NotificationItemResponse)
+def notifications_mark_unread_api(notification_id: int, db: Session = Depends(get_db_session)) -> dict[str, object]:
+    try:
+        row = mark_notification_unread(db, notification_id=notification_id)
+    except NotificationsValidationError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return {
+        "id": row.id,
+        "type": row.type,
+        "title": row.title,
+        "body": row.body,
+        "is_read": row.is_read,
+        "created_at": row.created_at.isoformat(),
+        "read_at": None if row.read_at is None else row.read_at.isoformat(),
+    }
+
+
 @api_router.post("/notifications/mark-all-read", response_model=MarkAllReadResponse)
 def notifications_mark_all_read_api(db: Session = Depends(get_db_session)) -> dict[str, object]:
     count = mark_all_notifications_read(db, now=datetime.now())
     return {"marked_count": count}
 
 
-@api_router.post("/admin/ensure-daily-generation")
+@api_router.post("/admin/ensure-daily-generation", response_model=GuardedGenerationResponse)
 def ensure_daily_generation_api(payload: ManualGenerationRequest, db: Session = Depends(get_db_session)) -> dict[str, object]:
     run_today = payload.today or date.today()
     guarded = run_generate_occurrences_once_per_day_in_session_if_ready(
@@ -778,7 +895,7 @@ def ensure_daily_generation_api(payload: ManualGenerationRequest, db: Session = 
     return response
 
 
-@api_router.post("/admin/run-notification-jobs")
+@api_router.post("/admin/run-notification-jobs", response_model=NotificationJobsRunResponse)
 def run_notification_jobs_api(
     today: date | None = Query(default=None),
     now: datetime | None = Query(default=None),
@@ -808,7 +925,7 @@ def run_notification_jobs_api(
     }
 
 
-@api_router.post("/admin/run-daily-summary-now")
+@api_router.post("/admin/run-daily-summary-now", response_model=NotificationJobsRunResponse)
 def run_daily_summary_now_api(
     today: date | None = Query(default=None),
     now: datetime | None = Query(default=None),
@@ -838,7 +955,7 @@ def run_daily_summary_now_api(
     }
 
 
-@api_router.post("/admin/run-notification-jobs-once-today")
+@api_router.post("/admin/run-notification-jobs-once-today", response_model=NotificationJobsRunResponse)
 def run_notification_jobs_once_today_api(
     today: date | None = Query(default=None),
     now: datetime | None = Query(default=None),

@@ -300,6 +300,17 @@ def mark_notification_read(session: Session, *, notification_id: int, now: datet
     return row
 
 
+def mark_notification_unread(session: Session, *, notification_id: int) -> Notification:
+    row = session.get(Notification, notification_id)
+    if row is None:
+        raise NotificationsValidationError(f"Notification {notification_id} not found")
+    row.is_read = False
+    row.read_at = None
+    session.commit()
+    session.refresh(row)
+    return row
+
+
 def mark_all_notifications_read(session: Session, *, now: datetime) -> int:
     rows = session.scalars(select(Notification).where(Notification.is_read.is_(False))).all()
     for row in rows:

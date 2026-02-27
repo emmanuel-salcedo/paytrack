@@ -781,6 +781,10 @@ def test_notification_log_records_telegram_error_status(tmp_path, monkeypatch) -
             )
             assert run_jobs.status_code == 200
             assert run_jobs.json()["telegram_errors"] >= 1
+            settings_page = client.get("/settings")
+            assert settings_page.status_code == 200
+            assert "Telegram delivery warning:" in settings_page.text
+            assert "telegram down" in settings_page.text
 
             with SessionLocal() as session:
                 telegram_logs = session.query(NotificationLog).filter(NotificationLog.channel == "telegram").all()

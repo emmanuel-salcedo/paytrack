@@ -282,6 +282,30 @@ def list_notification_logs(
     ]
 
 
+def get_latest_telegram_delivery_error(session: Session) -> NotificationLogRowView | None:
+    row = session.scalar(
+        select(NotificationLog)
+        .where(NotificationLog.channel == "telegram", NotificationLog.status == "error")
+        .order_by(NotificationLog.created_at.desc(), NotificationLog.id.desc())
+        .limit(1)
+    )
+    if row is None:
+        return None
+    return NotificationLogRowView(
+        id=row.id,
+        type=row.type,
+        channel=row.channel,
+        bucket_date=row.bucket_date,
+        dedup_key=row.dedup_key,
+        status=row.status,
+        attempt_count=row.attempt_count,
+        telegram_message_id=row.telegram_message_id,
+        error_message=row.error_message,
+        delivered_at=row.delivered_at,
+        created_at=row.created_at,
+    )
+
+
 def get_unread_notifications_count(session: Session) -> int:
     count = session.scalar(
         select(func.count()).select_from(Notification).where(Notification.is_read.is_(False))

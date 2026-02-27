@@ -15,6 +15,15 @@
 {% if settings_error %}
   <p class="error" role="alert">{{ settings_error }}</p>
 {% endif %}
+{% if latest_telegram_delivery_error %}
+  <p class="warn" role="status">
+    Telegram delivery warning:
+    {{ latest_telegram_delivery_error.error_message or "Unknown delivery error." }}
+    ({{ latest_telegram_delivery_error.created_at.strftime('%Y-%m-%d %H:%M') }},
+    attempts: {{ latest_telegram_delivery_error.attempt_count }}).
+    Check Notifications -> Delivery Log for details.
+  </p>
+{% endif %}
 
 <section class="feature-band" aria-label="Settings status">
   <div>

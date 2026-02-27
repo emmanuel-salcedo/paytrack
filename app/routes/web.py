@@ -28,6 +28,7 @@ from app.services.notifications_service import (
     count_notification_logs_filtered,
     count_notifications,
     create_in_app_notification,
+    get_latest_telegram_delivery_error,
     get_unread_notifications_count,
     NotificationLogFilters,
     list_notification_logs,
@@ -351,6 +352,7 @@ def _render_settings_page(
     app_settings_errors: dict[str, str] | None = None,
 ):
     pay_schedule, app_settings = get_or_create_settings_rows(db)
+    latest_telegram_delivery_error = get_latest_telegram_delivery_error(db)
     return templates.TemplateResponse(
         request,
         "settings.html",
@@ -362,6 +364,7 @@ def _render_settings_page(
             "pay_schedule_errors": pay_schedule_errors or {},
             "app_settings_errors": app_settings_errors or {},
             "notifications_unread_count": get_unread_notifications_count(db),
+            "latest_telegram_delivery_error": latest_telegram_delivery_error,
         },
     )
 

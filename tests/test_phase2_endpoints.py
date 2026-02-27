@@ -269,7 +269,7 @@ def test_web_htmx_payments_and_generation_panels(tmp_path) -> None:
             home = client.get("/")
             assert home.status_code == 200
             assert "Current Cycle" in home.text
-            assert "Next Cycle Preview" in home.text
+            assert "Current Cycle Totals" in home.text
 
             dashboard_page = client.get("/dashboard")
             upcoming_page = client.get("/upcoming")

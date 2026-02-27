@@ -6,7 +6,7 @@
 <section class="hero">
   <span class="pill">Dashboard</span>
   <h1>Current Cycle Overview</h1>
-  <p class="muted">Current and next cycle views with actions, totals, and generation controls.</p>
+  <p class="muted">Track what is due right now and take actions quickly.</p>
 </section>
 
 <section class="stat-grid" aria-label="Dashboard summary">
@@ -22,13 +22,14 @@
   </article>
 
   <article class="card stat-card">
-    <p class="eyebrow">Next Cycle Preview</p>
-    <h2>{{ next_cycle_snapshot.cycle_start }} to {{ next_cycle_snapshot.cycle_end }}</h2>
-    <p class="big-amount">${{ '%.2f'|format(next_cycle_snapshot.scheduled_total) }}</p>
-    <p class="muted">Projected scheduled obligations</p>
+    <p class="eyebrow">Current Cycle Totals</p>
+    <h2>Cash Flow vs Obligations</h2>
+    <p class="big-amount">${{ '%.2f'|format(current_cycle_snapshot.scheduled_total) }}</p>
+    <p class="muted">Scheduled this cycle</p>
     <div class="mini-rows">
-      <div><span>Items</span><strong>{{ next_cycle_snapshot.occurrence_count }}</strong></div>
-      <div><span>Remaining</span><strong>${{ '%.2f'|format(next_cycle_snapshot.remaining_total) }}</strong></div>
+      <div><span>Items</span><strong>{{ current_cycle_snapshot.occurrence_count }}</strong></div>
+      <div><span>Skipped</span><strong>${{ '%.2f'|format(current_cycle_snapshot.skipped_total) }}</strong></div>
+      <div><span>Remaining</span><strong>${{ '%.2f'|format(current_cycle_snapshot.remaining_total) }}</strong></div>
     </div>
   </article>
 

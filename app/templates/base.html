@@ -22,7 +22,6 @@
         </div>
         <nav class="top-nav">
           <a class="{% if request.url.path.startswith('/dashboard') or request.url.path == '/' %}active{% endif %}" href="/dashboard">Dashboard</a>
-          <a class="{% if request.url.path.startswith('/upcoming') %}active{% endif %}" href="/upcoming">Upcoming</a>
           <a class="{% if request.url.path.startswith('/payments') %}active{% endif %}" href="/payments">Payments</a>
           <a class="{% if request.url.path.startswith('/history') %}active{% endif %}" href="/history">History</a>
           <a class="{% if request.url.path.startswith('/settings') %}active{% endif %}" href="/settings">Settings</a>

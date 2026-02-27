@@ -33,6 +33,7 @@ class NotificationLogRowView:
     bucket_date: date
     dedup_key: str
     status: str
+    attempt_count: int
     telegram_message_id: str | None
     error_message: str | None
     delivered_at: datetime | None
@@ -93,6 +94,7 @@ def try_log_notification_delivery(
         occurrence_id=occurrence_id,
         dedup_key=dedup_key,
         status="sent",
+        attempt_count=1,
         delivered_at=datetime.now(),
     )
     session.add(row)
@@ -113,6 +115,7 @@ def create_notification_log_entry(
     dedup_key: str,
     occurrence_id: int | None = None,
     status: str = "pending",
+    attempt_count: int = 0,
     telegram_message_id: str | None = None,
 ) -> NotificationLog | None:
     row = NotificationLog(
@@ -122,6 +125,7 @@ def create_notification_log_entry(
         occurrence_id=occurrence_id,
         dedup_key=dedup_key,
         status=status,
+        attempt_count=max(attempt_count, 0),
         telegram_message_id=(telegram_message_id or "").strip() or None,
         delivered_at=datetime.now() if status == "sent" else None,
     )
@@ -142,6 +146,7 @@ def finalize_notification_log_entry(
     status: str,
     error_message: str | None = None,
     telegram_message_id: str | None = None,
+    attempt_count: int | None = None,
 ) -> NotificationLog | None:
     row = session.get(NotificationLog, log_id)
     if row is None:
@@ -149,6 +154,8 @@ def finalize_notification_log_entry(
     row.status = status
     row.error_message = (error_message or "").strip() or None
     row.telegram_message_id = (telegram_message_id or "").strip() or None
+    if attempt_count is not None:
+        row.attempt_count = max(attempt_count, 0)
     row.delivered_at = datetime.now() if status == "sent" else None
     session.commit()
     session.refresh(row)
@@ -265,6 +272,7 @@ def list_notification_logs(
             bucket_date=row.bucket_date,
             dedup_key=row.dedup_key,
             status=row.status,
+            attempt_count=row.attempt_count,
             telegram_message_id=row.telegram_message_id,
             error_message=row.error_message,
             delivered_at=row.delivered_at,

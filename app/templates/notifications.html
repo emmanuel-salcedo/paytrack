@@ -191,6 +191,7 @@
           <th>Bucket</th>
           <th>Dedup Key</th>
           <th>Status</th>
+          <th>Attempts</th>
           <th>Message ID</th>
           <th>Delivered</th>
           <th>Error</th>
@@ -207,6 +208,7 @@
             <td>
               <span class="status-pill {% if row.status == 'sent' %}status-completed{% elif row.status == 'error' %}status-canceled{% else %}status-skipped{% endif %}">{{ row.status }}</span>
             </td>
+            <td>{{ row.attempt_count }}</td>
             <td>{{ row.telegram_message_id or '-' }}</td>
             <td>{{ row.delivered_at.strftime('%Y-%m-%d %H:%M') if row.delivered_at else '-' }}</td>
             <td class="muted">{{ row.error_message or '-' }}</td>

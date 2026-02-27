@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import csv
+import io
+import json
 from datetime import date, datetime
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
@@ -148,6 +152,104 @@ class AppSettingsUpdateRequest(BaseModel):
     telegram_chat_id: str | None = None
 
 
+class HistoryItemResponse(BaseModel):
+    occurrence_id: int
+    payment_id: int
+    payment_name: str
+    due_date: str
+    status: str
+    expected_amount: str
+    amount_paid: str | None
+    paid_date: str | None
+
+
+class HistoryFiltersResponse(BaseModel):
+    status: str | None
+    start_date: str | None
+    end_date: str | None
+    q: str | None
+
+
+class HistoryListResponse(BaseModel):
+    items: list[HistoryItemResponse]
+    page: int
+    per_page: int
+    sort: str
+    total: int
+    has_prev: bool
+    has_next: bool
+    filters: HistoryFiltersResponse
+
+
+class NotificationLogItemResponse(BaseModel):
+    id: int
+    type: str
+    channel: str
+    bucket_date: str
+    dedup_key: str
+    status: str
+    attempt_count: int
+    telegram_message_id: str | None
+    error_message: str | None
+    delivered_at: str | None
+    created_at: str
+
+
+class NotificationLogFiltersResponse(BaseModel):
+    type: str | None
+    channel: str | None
+    status: str | None
+    start_date: str | None
+    end_date: str | None
+
+
+class NotificationLogListResponse(BaseModel):
+    items: list[NotificationLogItemResponse]
+    page: int
+    per_page: int
+    sort: str
+    total: int
+    has_prev: bool
+    has_next: bool
+    filters: NotificationLogFiltersResponse
+
+
+class NotificationItemResponse(BaseModel):
+    id: int
+    type: str
+    title: str
+    body: str
+    is_read: bool
+    created_at: str
+    read_at: str | None
+
+
+class NotificationFiltersResponse(BaseModel):
+    type: str | None
+    read_state: str | None
+    start_date: str | None
+    end_date: str | None
+
+
+class NotificationListResponse(BaseModel):
+    items: list[NotificationItemResponse]
+    page: int
+    per_page: int
+    sort: str
+    total: int
+    has_prev: bool
+    has_next: bool
+    filters: NotificationFiltersResponse
+
+
+class UnreadCountResponse(BaseModel):
+    unread_count: int
+
+
+class MarkAllReadResponse(BaseModel):
+    marked_count: int
+
+
 def _serialize_settings(db: Session) -> dict[str, object]:
     pay_schedule, app_settings = get_or_create_settings_rows(db)
     return {
@@ -224,6 +326,7 @@ def _serialize_notification_log_row(row) -> dict[str, object]:
         "bucket_date": row.bucket_date.isoformat(),
         "dedup_key": row.dedup_key,
         "status": row.status,
+        "attempt_count": row.attempt_count,
         "telegram_message_id": row.telegram_message_id,
         "error_message": row.error_message,
         "delivered_at": None if row.delivered_at is None else row.delivered_at.isoformat(),
@@ -412,7 +515,7 @@ def next_cycle_snapshot_api(
     return _serialize_cycle_snapshot(snapshot)
 
 
-@api_router.get("/history")
+@api_router.get("/history", response_model=HistoryListResponse)
 def history_api(
     status: str | None = Query(default=None),
     start_date: date | None = Query(default=None),
@@ -456,7 +559,7 @@ def history_api(
     }
 
 
-@api_router.get("/notification-logs")
+@api_router.get("/notification-logs", response_model=NotificationLogListResponse)
 def notification_logs_api(
     page: int = Query(default=1, ge=1),
     per_page: int = Query(default=20, ge=1, le=100),
@@ -504,7 +607,71 @@ def notification_logs_api(
     }
 
 
-@api_router.get("/notifications")
+@api_router.get("/notification-logs/export")
+def notification_logs_export_api(
+    format: str = Query(default="csv"),
+    type: str | None = Query(default=None),
+    channel: str | None = Query(default=None),
+    status: str | None = Query(default=None),
+    sort: str = Query(default="newest"),
+    start_date: date | None = Query(default=None),
+    end_date: date | None = Query(default=None),
+    db: Session = Depends(get_db_session),
+) -> Response:
+    validated_channel = _require_enum((channel or "").strip() or None, field="channel", allowed=NOTIFICATION_LOG_CHANNEL_VALUES)
+    validated_status = _require_enum((status or "").strip() or None, field="status", allowed=NOTIFICATION_LOG_STATUS_VALUES)
+    validated_sort = _require_enum(sort, field="sort", allowed=NOTIFICATION_LOG_SORT_VALUES) or "newest"
+    normalized_format = (format or "").strip().lower()
+    if normalized_format not in {"csv", "jsonl"}:
+        raise HTTPException(status_code=400, detail="Invalid format. Allowed: csv, jsonl.")
+
+    filters = NotificationLogFilters(
+        type=(type or "").strip() or None,
+        channel=validated_channel,
+        status=validated_status,
+        start_date=start_date,
+        end_date=end_date,
+    )
+    total = count_notification_logs_filtered(db, filters=filters)
+    rows = list_notification_logs(db, limit=max(total, 1), offset=0, filters=filters, sort=validated_sort)
+    serialized_rows = [_serialize_notification_log_row(row) for row in rows]
+
+    if normalized_format == "jsonl":
+        payload = "\n".join(json.dumps(item, separators=(",", ":")) for item in serialized_rows)
+        return Response(
+            content=payload + ("\n" if payload else ""),
+            media_type="application/x-ndjson",
+            headers={"Content-Disposition": "attachment; filename=notification_logs.jsonl"},
+        )
+
+    buffer = io.StringIO()
+    writer = csv.DictWriter(
+        buffer,
+        fieldnames=[
+            "id",
+            "type",
+            "channel",
+            "bucket_date",
+            "dedup_key",
+            "status",
+            "attempt_count",
+            "telegram_message_id",
+            "error_message",
+            "delivered_at",
+            "created_at",
+        ],
+    )
+    writer.writeheader()
+    for item in serialized_rows:
+        writer.writerow(item)
+    return Response(
+        content=buffer.getvalue(),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=notification_logs.csv"},
+    )
+
+
+@api_router.get("/notifications", response_model=NotificationListResponse)
 def notifications_api(
     page: int = Query(default=1, ge=1),
     per_page: int = Query(default=20, ge=1, le=100),
@@ -548,12 +715,12 @@ def notifications_api(
     }
 
 
-@api_router.get("/notifications/unread-count")
+@api_router.get("/notifications/unread-count", response_model=UnreadCountResponse)
 def notifications_unread_count_api(db: Session = Depends(get_db_session)) -> dict[str, int]:
     return {"unread_count": get_unread_notifications_count(db)}
 
 
-@api_router.post("/notifications/{notification_id}/read")
+@api_router.post("/notifications/{notification_id}/read", response_model=NotificationItemResponse)
 def notifications_mark_read_api(notification_id: int, db: Session = Depends(get_db_session)) -> dict[str, object]:
     try:
         row = mark_notification_read(db, notification_id=notification_id, now=datetime.now())
@@ -570,7 +737,7 @@ def notifications_mark_read_api(notification_id: int, db: Session = Depends(get_
     }
 
 
-@api_router.post("/notifications/mark-all-read")
+@api_router.post("/notifications/mark-all-read", response_model=MarkAllReadResponse)
 def notifications_mark_all_read_api(db: Session = Depends(get_db_session)) -> dict[str, object]:
     count = mark_all_notifications_read(db, now=datetime.now())
     return {"marked_count": count}

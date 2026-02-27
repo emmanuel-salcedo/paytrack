@@ -880,6 +880,7 @@ def test_history_and_notification_logs_api_pagination_and_filters(tmp_path) -> N
             assert logs_payload["per_page"] == 2
             assert "items" in logs_payload
             assert len(logs_payload["items"]) <= 2
+            assert "attempt_count" in logs_payload["items"][0]
 
             logs_filtered = client.get(
                 "/api/notification-logs",
@@ -890,6 +891,22 @@ def test_history_and_notification_logs_api_pagination_and_filters(tmp_path) -> N
                 assert item["channel"] == "in_app"
                 assert item["status"] == "sent"
                 assert item["bucket_date"] == "2026-01-15"
+
+            export_csv = client.get(
+                "/api/notification-logs/export",
+                params={"format": "csv", "channel": "in_app"},
+            )
+            assert export_csv.status_code == 200
+            assert "text/csv" in export_csv.headers["content-type"]
+            assert "attempt_count" in export_csv.text
+
+            export_jsonl = client.get(
+                "/api/notification-logs/export",
+                params={"format": "jsonl", "channel": "in_app"},
+            )
+            assert export_jsonl.status_code == 200
+            assert "application/x-ndjson" in export_jsonl.headers["content-type"]
+            assert "\"channel\":\"in_app\"" in export_jsonl.text
     finally:
         app.dependency_overrides.clear()
 
@@ -975,6 +992,10 @@ def test_api_enum_validation_for_notifications_and_logs(tmp_path) -> None:
             bad_log_status = client.get("/api/notification-logs", params={"status": "done"})
             assert bad_log_status.status_code == 400
             assert "Invalid status" in bad_log_status.json()["detail"]
+
+            bad_export_format = client.get("/api/notification-logs/export", params={"format": "xml"})
+            assert bad_export_format.status_code == 400
+            assert "Invalid format" in bad_export_format.json()["detail"]
     finally:
         app.dependency_overrides.clear()
 
@@ -1033,6 +1054,7 @@ def test_telegram_retry_and_message_id_logged(tmp_path, monkeypatch) -> None:
                 assert telegram_logs
                 assert any(row.status == "sent" for row in telegram_logs)
                 assert any(row.telegram_message_id == "987654" for row in telegram_logs)
+                assert any(row.attempt_count >= 3 for row in telegram_logs)
     finally:
         app.dependency_overrides.clear()
 

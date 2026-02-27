@@ -158,6 +158,7 @@ def _maybe_send_telegram(
         bucket_date=bucket_date,
         dedup_key=dedup_key,
         status="pending",
+        attempt_count=0,
     )
     if log_row is None:
         return False, False
@@ -175,6 +176,7 @@ def _maybe_send_telegram(
                 session,
                 log_id=log_row.id,
                 status="sent",
+                attempt_count=attempt,
                 telegram_message_id=None if result.message_id is None else str(result.message_id),
             )
             return True, False
@@ -188,6 +190,7 @@ def _maybe_send_telegram(
         session,
         log_id=log_row.id,
         status="error",
+        attempt_count=TELEGRAM_SEND_MAX_ATTEMPTS if last_error is None else attempt,
         error_message=str(last_error) if last_error is not None else "Telegram send failed.",
     )
     return False, True

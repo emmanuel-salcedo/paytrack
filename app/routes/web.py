@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
+import logging
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, Form, Request
@@ -58,6 +59,7 @@ from app.services.telegram_service import TelegramDeliveryError, send_telegram_m
 
 templates = Jinja2Templates(directory=str(Path(__file__).resolve().parents[1] / "templates"))
 web_router = APIRouter(tags=["web"])
+logger = logging.getLogger(__name__)
 
 
 def _show_archived_enabled(value: str | None) -> bool:
@@ -452,6 +454,7 @@ def _notify_best_effort(
         )
     except Exception:
         db.rollback()
+        logger.exception("Failed to create in-app notification type=%s title=%s", type, title)
 
 
 @web_router.post("/payments")

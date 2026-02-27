@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
+import logging
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -12,6 +13,8 @@ from app.services.scheduling_service import (
     PaymentScheduleSpec,
     build_occurrence_seeds_for_payment,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class ActionValidationError(ValueError):
@@ -130,6 +133,13 @@ def mark_occurrence_paid(
     occurrence.status = "completed"
     session.commit()
     session.refresh(occurrence)
+    logger.info(
+        "Occurrence marked paid occurrence_id=%s payment_id=%s amount_paid=%s paid_date=%s",
+        occurrence.id,
+        occurrence.payment_id,
+        occurrence.amount_paid,
+        occurrence.paid_date,
+    )
     return occurrence
 
 
@@ -143,6 +153,11 @@ def undo_mark_paid(session: Session, *, occurrence_id: int) -> Occurrence:
     occurrence.paid_date = None
     session.commit()
     session.refresh(occurrence)
+    logger.info(
+        "Occurrence mark-paid undone occurrence_id=%s payment_id=%s",
+        occurrence.id,
+        occurrence.payment_id,
+    )
     return occurrence
 
 
@@ -154,6 +169,11 @@ def skip_occurrence(session: Session, *, occurrence_id: int) -> Occurrence:
     occurrence.status = "skipped"
     session.commit()
     session.refresh(occurrence)
+    logger.info(
+        "Occurrence skipped occurrence_id=%s payment_id=%s",
+        occurrence.id,
+        occurrence.payment_id,
+    )
     return occurrence
 
 
@@ -180,6 +200,12 @@ def mark_payment_paid_off(
 
     session.commit()
     session.refresh(payment)
+    logger.info(
+        "Payment marked paid off payment_id=%s paid_off_date=%s canceled_occurrences=%s",
+        payment.id,
+        paid_off_date,
+        len(future_scheduled_occurrences),
+    )
     return PaidOffResult(
         payment_id=payment.id,
         paid_off_date=paid_off_date,
@@ -206,6 +232,12 @@ def reactivate_payment(
     )
     session.commit()
     session.refresh(payment)
+    logger.info(
+        "Payment reactivated payment_id=%s generated=%s skipped_existing=%s",
+        payment.id,
+        generated_count,
+        skipped_existing_count,
+    )
     return ReactivatePaymentResult(
         payment_id=payment.id,
         generated_occurrences_count=generated_count,
@@ -252,6 +284,13 @@ def update_payment_and_rebuild_future_scheduled(
     )
     session.commit()
     session.refresh(payment)
+    logger.info(
+        "Payment updated payment_id=%s deleted_future=%s generated=%s skipped_existing=%s",
+        payment.id,
+        len(future_scheduled_rows),
+        generated_count,
+        skipped_existing_count,
+    )
     return ReactivatePaymentResult(
         payment_id=payment.id,
         generated_occurrences_count=generated_count,

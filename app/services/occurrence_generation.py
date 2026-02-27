@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date, timedelta
 from decimal import Decimal
+import logging
 
 from sqlalchemy import inspect, select
 from sqlalchemy.exc import IntegrityError
@@ -12,6 +13,8 @@ from app.db import SessionLocal
 from app.models.jobs import JobRun
 from app.models.payments import Occurrence, Payment
 from app.services.scheduling_service import PaymentScheduleSpec, ScheduledOccurrenceSeed, build_occurrence_seeds
+
+logger = logging.getLogger(__name__)
 
 
 DEFAULT_GENERATION_HORIZON_DAYS = 90
@@ -72,6 +75,12 @@ def generate_occurrences_ahead(
 
     seeds = build_occurrence_seeds(payments=payment_specs, range_start=range_start, range_end=range_end)
     if not seeds:
+        logger.info(
+            "Occurrence generation produced no seeds range_start=%s range_end=%s active_payments=%s",
+            range_start,
+            range_end,
+            len(payment_specs),
+        )
         return OccurrenceGenerationResult(
             generated_count=0,
             skipped_existing_count=0,
@@ -113,6 +122,14 @@ def generate_occurrences_ahead(
                 range_end=range_end,
             )
 
+    logger.info(
+        "Occurrence generation completed range_start=%s range_end=%s generated=%s skipped_existing=%s active_payments=%s",
+        range_start,
+        range_end,
+        len(to_insert),
+        skipped_existing_count,
+        len(payment_specs),
+    )
     return OccurrenceGenerationResult(
         generated_count=len(to_insert),
         skipped_existing_count=skipped_existing_count,
@@ -143,6 +160,7 @@ def run_generate_occurrences_once_per_day(
         run_date=today,
     )
     if not did_mark:
+        logger.info("Occurrence generation guard skip job=%s run_date=%s", GENERATE_OCCURRENCES_JOB_NAME, today)
         return GuardedOccurrenceGenerationRunResult(
             job_name=GENERATE_OCCURRENCES_JOB_NAME,
             run_date=today,
@@ -151,6 +169,13 @@ def run_generate_occurrences_once_per_day(
         )
 
     generation_result = generate_occurrences_ahead(session, today=today, horizon_days=horizon_days)
+    logger.info(
+        "Occurrence generation guard run job=%s run_date=%s generated=%s skipped_existing=%s",
+        GENERATE_OCCURRENCES_JOB_NAME,
+        today,
+        generation_result.generated_count,
+        generation_result.skipped_existing_count,
+    )
     return GuardedOccurrenceGenerationRunResult(
         job_name=GENERATE_OCCURRENCES_JOB_NAME,
         run_date=today,
@@ -168,6 +193,7 @@ def run_generate_occurrences_once_per_day_in_session_if_ready(
     inspector = inspect(session.bind)
     tables = set(inspector.get_table_names())
     if not {"payments", "occurrences", "job_runs"}.issubset(tables):
+        logger.debug("Occurrence generation readiness check failed tables=%s", ",".join(sorted(tables)))
         return None
     return run_generate_occurrences_once_per_day(session, today=today, horizon_days=horizon_days)
 

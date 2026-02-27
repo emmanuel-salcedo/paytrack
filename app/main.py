@@ -5,11 +5,13 @@ import os
 from contextlib import asynccontextmanager
 from datetime import date, datetime
 from pathlib import Path
+from time import perf_counter
+from uuid import uuid4
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 
-from app.logging_config import configure_logging
+from app.logging_config import configure_logging, reset_request_id, set_request_id
 from app.routes.api import api_router
 from app.routes.web import web_router
 from app.services.notification_jobs_service import run_notification_jobs_once_per_day_in_session_if_ready
@@ -79,6 +81,37 @@ async def lifespan(app: FastAPI):
 
 def create_app() -> FastAPI:
     app = FastAPI(title="PayTrack", version="0.1.0", lifespan=lifespan)
+
+    @app.middleware("http")
+    async def log_request_middleware(request: Request, call_next):
+        request_id = request.headers.get("x-request-id", "").strip() or uuid4().hex[:12]
+        request.state.request_id = request_id
+        token = set_request_id(request_id)
+        start = perf_counter()
+        logger.info("Request started %s %s", request.method, request.url.path)
+        try:
+            response = await call_next(request)
+        except Exception:
+            elapsed_ms = (perf_counter() - start) * 1000
+            logger.exception(
+                "Request failed %s %s duration_ms=%.2f",
+                request.method,
+                request.url.path,
+                elapsed_ms,
+            )
+            reset_request_id(token)
+            raise
+        elapsed_ms = (perf_counter() - start) * 1000
+        logger.info(
+            "Request completed %s %s status=%s duration_ms=%.2f",
+            request.method,
+            request.url.path,
+            response.status_code,
+            elapsed_ms,
+        )
+        response.headers["X-Request-ID"] = request_id
+        reset_request_id(token)
+        return response
 
     static_dir = Path(__file__).parent / "static"
     app.mount("/static", StaticFiles(directory=static_dir), name="static")

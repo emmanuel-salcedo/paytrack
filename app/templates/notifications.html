@@ -65,45 +65,47 @@
     </div>
 
     {% if notifications %}
-      <table class="payments-table">
-        <thead>
-          <tr>
-            <th>When</th>
-            <th>Type</th>
-            <th>Title</th>
-            <th>Status</th>
-            <th>Action</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for row in notifications %}
+      <div class="table-wrap">
+        <table class="payments-table">
+          <thead>
             <tr>
-              <td>{{ row.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
-              <td>{{ row.type }}</td>
-              <td>
-                <div><strong>{{ row.title }}</strong></div>
-                <div class="muted">{{ row.body }}</div>
-              </td>
-              <td>
-                {% if row.is_read %}
-                  <span class="status-pill status-completed">read</span>
-                {% else %}
-                  <span class="status-pill status-scheduled">unread</span>
-                {% endif %}
-              </td>
-              <td>
-                {% if not row.is_read %}
-                  <form method="post" action="/notifications/{{ row.id }}/read">
-                    <button type="submit">Mark Read</button>
-                  </form>
-                {% else %}
-                  <span class="muted">-</span>
-                {% endif %}
-              </td>
+              <th>When</th>
+              <th>Type</th>
+              <th>Title</th>
+              <th>Status</th>
+              <th>Action</th>
             </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {% for row in notifications %}
+              <tr>
+                <td>{{ row.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                <td>{{ row.type }}</td>
+                <td>
+                  <div><strong>{{ row.title }}</strong></div>
+                  <div class="muted">{{ row.body }}</div>
+                </td>
+                <td>
+                  {% if row.is_read %}
+                    <span class="status-pill status-completed">read</span>
+                  {% else %}
+                    <span class="status-pill status-scheduled">unread</span>
+                  {% endif %}
+                </td>
+                <td>
+                  {% if not row.is_read %}
+                    <form method="post" action="/notifications/{{ row.id }}/read">
+                      <button type="submit">Mark Read</button>
+                    </form>
+                  {% else %}
+                    <span class="muted">-</span>
+                  {% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
       <div class="pager-row">
         <span class="muted">Showing {{ notifications|length }} of {{ notifications_total }} notifications (page {{ notifications_page_num }})</span>
         <div class="inline-form">
@@ -182,40 +184,42 @@
   </div>
 
   {% if delivery_logs %}
-    <table class="payments-table compact-table">
-      <thead>
-        <tr>
-          <th>Created</th>
-          <th>Type</th>
-          <th>Channel</th>
-          <th>Bucket</th>
-          <th>Dedup Key</th>
-          <th>Status</th>
-          <th>Attempts</th>
-          <th>Message ID</th>
-          <th>Delivered</th>
-          <th>Error</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for row in delivery_logs %}
+    <div class="table-wrap">
+      <table class="payments-table compact-table">
+        <thead>
           <tr>
-            <td>{{ row.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
-            <td>{{ row.type }}</td>
-            <td>{{ row.channel }}</td>
-            <td>{{ row.bucket_date }}</td>
-            <td><code>{{ row.dedup_key }}</code></td>
-            <td>
-              <span class="status-pill {% if row.status == 'sent' %}status-completed{% elif row.status == 'error' %}status-canceled{% else %}status-skipped{% endif %}">{{ row.status }}</span>
-            </td>
-            <td>{{ row.attempt_count }}</td>
-            <td>{{ row.telegram_message_id or '-' }}</td>
-            <td>{{ row.delivered_at.strftime('%Y-%m-%d %H:%M') if row.delivered_at else '-' }}</td>
-            <td class="muted">{{ row.error_message or '-' }}</td>
+            <th>Created</th>
+            <th>Type</th>
+            <th>Channel</th>
+            <th>Bucket</th>
+            <th>Dedup Key</th>
+            <th>Status</th>
+            <th>Attempts</th>
+            <th>Message ID</th>
+            <th>Delivered</th>
+            <th>Error</th>
           </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {% for row in delivery_logs %}
+            <tr>
+              <td>{{ row.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+              <td>{{ row.type }}</td>
+              <td>{{ row.channel }}</td>
+              <td>{{ row.bucket_date }}</td>
+              <td><code>{{ row.dedup_key }}</code></td>
+              <td>
+                <span class="status-pill {% if row.status == 'sent' %}status-completed{% elif row.status == 'error' %}status-canceled{% else %}status-skipped{% endif %}">{{ row.status }}</span>
+              </td>
+              <td>{{ row.attempt_count }}</td>
+              <td>{{ row.telegram_message_id or '-' }}</td>
+              <td>{{ row.delivered_at.strftime('%Y-%m-%d %H:%M') if row.delivered_at else '-' }}</td>
+              <td class="muted">{{ row.error_message or '-' }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
     <div class="pager-row">
       <span class="muted">Showing {{ delivery_logs|length }} of {{ delivery_log_total }} log rows (page {{ delivery_log_page_num }})</span>
       <div class="inline-form">

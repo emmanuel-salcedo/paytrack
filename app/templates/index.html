@@ -3,10 +3,53 @@
 {% block title %}PayTrack | Dashboard{% endblock %}
 
 {% block content %}
+{% set ns = namespace(scheduled_items=0, completed_items=0, skipped_items=0) %}
+{% for item in current_cycle_snapshot.occurrences %}
+  {% if item.status == 'scheduled' %}
+    {% set ns.scheduled_items = ns.scheduled_items + 1 %}
+  {% elif item.status == 'completed' %}
+    {% set ns.completed_items = ns.completed_items + 1 %}
+  {% elif item.status == 'skipped' %}
+    {% set ns.skipped_items = ns.skipped_items + 1 %}
+  {% endif %}
+{% endfor %}
+
 <section class="hero">
   <span class="pill">Dashboard</span>
   <h1>Current Cycle Overview</h1>
-  <p class="muted">Track what is due right now and take actions quickly.</p>
+  <p class="muted">One screen to run this cycle: track due items, mark paid or skipped, and keep remaining balance visible.</p>
+</section>
+
+<section class="card dashboard-toolbar" aria-label="Dashboard quick actions">
+  <div>
+    <p class="eyebrow">Current Cycle Workspace</p>
+    <h2>{{ current_cycle_snapshot.cycle_start }} to {{ current_cycle_snapshot.cycle_end }}</h2>
+    <p class="muted">Use quick actions in each row. Changes update totals immediately.</p>
+  </div>
+  <div class="dashboard-toolbar-actions">
+    <a class="link-btn" href="/payments">Manage Payments</a>
+    <a class="link-btn" href="/history">Open History</a>
+    <a class="link-btn" href="/notifications">View Notifications</a>
+    <a class="link-btn" href="/settings">Settings</a>
+  </div>
+</section>
+
+<section class="dashboard-kpis" aria-label="Current cycle item counters">
+  <article class="card kpi-card">
+    <p class="eyebrow">Due Now</p>
+    <p class="kpi-value">{{ ns.scheduled_items }}</p>
+    <p class="muted">Still scheduled this cycle</p>
+  </article>
+  <article class="card kpi-card">
+    <p class="eyebrow">Completed Items</p>
+    <p class="kpi-value">{{ ns.completed_items }}</p>
+    <p class="muted">Marked paid this cycle</p>
+  </article>
+  <article class="card kpi-card">
+    <p class="eyebrow">Skipped Items</p>
+    <p class="kpi-value">{{ ns.skipped_items }}</p>
+    <p class="muted">Skipped this cycle</p>
+  </article>
 </section>
 
 <section class="stat-grid" aria-label="Dashboard summary">

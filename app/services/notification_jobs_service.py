@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
+import logging
 import time as time_module
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -19,6 +20,8 @@ from app.services.notifications_service import (
 from app.services.occurrence_generation import try_mark_daily_job_run
 from app.services.settings_service import get_or_create_settings_rows
 from app.services.telegram_service import TelegramDeliveryError, send_telegram_message
+
+logger = logging.getLogger(__name__)
 
 
 NOTIFICATION_JOBS_JOB_NAME = "run_notification_jobs"
@@ -147,8 +150,10 @@ def _maybe_send_telegram(
     app_settings: AppSettings,
 ) -> tuple[bool, bool]:
     if not app_settings.telegram_enabled:
+        logger.info("Telegram delivery skipped row_type=%s reason=disabled", row_type)
         return False, False
     if not app_settings.telegram_bot_token or not app_settings.telegram_chat_id:
+        logger.warning("Telegram delivery skipped row_type=%s reason=missing_credentials", row_type)
         return False, False
 
     log_row = create_notification_log_entry(
@@ -179,6 +184,7 @@ def _maybe_send_telegram(
                 attempt_count=attempt,
                 telegram_message_id=None if result.message_id is None else str(result.message_id),
             )
+            logger.info("Telegram delivery sent row_type=%s dedup_key=%s attempts=%s", row_type, dedup_key, attempt)
             return True, False
         except TelegramDeliveryError as exc:
             last_error = exc
@@ -192,6 +198,13 @@ def _maybe_send_telegram(
         status="error",
         attempt_count=TELEGRAM_SEND_MAX_ATTEMPTS if last_error is None else attempt,
         error_message=str(last_error) if last_error is not None else "Telegram send failed.",
+    )
+    logger.error(
+        "Telegram delivery failed row_type=%s dedup_key=%s attempts=%s error=%s",
+        row_type,
+        dedup_key,
+        TELEGRAM_SEND_MAX_ATTEMPTS if last_error is None else attempt,
+        str(last_error) if last_error is not None else "Telegram send failed.",
     )
     return False, True
 
@@ -322,6 +335,12 @@ def _run_notification_jobs(
         now=now,
     )
     daily_summary_deferred_before_time = not daily_summary_allowed and not force_daily_summary
+    if daily_summary_deferred_before_time:
+        logger.info(
+            "Daily summary deferred by time gate today=%s ready_time=%s",
+            today,
+            daily_summary_ready_time,
+        )
     if daily_summary_allowed or force_daily_summary:
         if _create_in_app_if_new(
             session,
@@ -371,6 +390,7 @@ def run_notification_jobs_once_per_day(
     now: datetime | None = None,
 ) -> NotificationJobsRunResult:
     if not try_mark_daily_job_run(session, job_name=NOTIFICATION_JOBS_JOB_NAME, run_date=today):
+        logger.info("Notification jobs guard skip job=%s run_date=%s", NOTIFICATION_JOBS_JOB_NAME, today)
         return NotificationJobsRunResult(
             ran=False,
             job_name=NOTIFICATION_JOBS_JOB_NAME,
@@ -383,7 +403,18 @@ def run_notification_jobs_once_per_day(
             daily_summary_deferred_before_time=False,
             daily_summary_ready_time=None,
         )
-    return _run_notification_jobs(session, today=today, now=now)
+    result = _run_notification_jobs(session, today=today, now=now)
+    logger.info(
+        "Notification jobs guard run job=%s run_date=%s daily_summary=%s due_soon=%s overdue=%s telegram_sent=%s telegram_errors=%s",
+        NOTIFICATION_JOBS_JOB_NAME,
+        today,
+        result.daily_summary_created,
+        result.due_soon_created,
+        result.overdue_created,
+        result.telegram_sent,
+        result.telegram_errors,
+    )
+    return result
 
 
 def run_notification_jobs_once_per_day_in_session_if_ready(
@@ -412,4 +443,15 @@ def run_notification_jobs_now_if_ready(
     required = {"notifications", "notification_log", "occurrences", "payments", "pay_schedule", "app_settings"}
     if not required.issubset(tables):
         return None
-    return _run_notification_jobs(session, today=today, now=now, force_daily_summary=force_daily_summary)
+    result = _run_notification_jobs(session, today=today, now=now, force_daily_summary=force_daily_summary)
+    logger.info(
+        "Notification jobs manual run today=%s daily_summary=%s due_soon=%s overdue=%s telegram_sent=%s telegram_errors=%s forced_daily=%s",
+        today,
+        result.daily_summary_created,
+        result.due_soon_created,
+        result.overdue_created,
+        result.telegram_sent,
+        result.telegram_errors,
+        force_daily_summary,
+    )
+    return result

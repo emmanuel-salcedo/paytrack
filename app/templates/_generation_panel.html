@@ -39,7 +39,7 @@
       {% endif %}
       <div class="stack">
         {% if generation_state.range_start %}
-          <div class="row"><span>Range</span><strong>{{ generation_state.range_start }} → {{ generation_state.range_end }}</strong></div>
+          <div class="row"><span>Range</span><strong>{{ generation_state.range_start }} -> {{ generation_state.range_end }}</strong></div>
           <div class="row"><span>Inserted</span><strong>{{ generation_state.generated_count }}</strong></div>
           <div class="row"><span>Skipped Existing</span><strong>{{ generation_state.skipped_existing_count }}</strong></div>
         {% endif %}
@@ -50,3 +50,4 @@
     {% endif %}
   </article>
 </div>
+

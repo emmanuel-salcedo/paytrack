@@ -90,13 +90,13 @@ def test_api_payments_create_list_and_manual_generation(tmp_path) -> None:
             current_cycle = client.get("/api/cycles/current", params={"today": "2026-01-15"})
             assert current_cycle.status_code == 200
             current_payload = current_cycle.json()
-            assert current_payload["cycle_start"] == "2026-01-02"
-            assert current_payload["cycle_end"] == "2026-01-15"
+            assert current_payload["cycle_start"] == "2026-01-15"
+            assert current_payload["cycle_end"] == "2026-01-28"
             assert current_payload["totals"] == {
-                "scheduled": "105.00",
+                "scheduled": "130.00",
                 "paid": "0.00",
                 "skipped": "0.00",
-                "remaining": "105.00",
+                "remaining": "130.00",
             }
             assert any(row["payment_name"] == "Internet" for row in current_payload["occurrences"])
             internet_occurrence = next(
@@ -106,8 +106,8 @@ def test_api_payments_create_list_and_manual_generation(tmp_path) -> None:
             next_cycle = client.get("/api/cycles/next", params={"today": "2026-01-15"})
             assert next_cycle.status_code == 200
             next_payload = next_cycle.json()
-            assert next_payload["cycle_start"] == "2026-01-16"
-            assert next_payload["cycle_end"] == "2026-01-29"
+            assert next_payload["cycle_start"] == "2026-01-29"
+            assert next_payload["cycle_end"] == "2026-02-11"
             assert next_payload["totals"] == {
                 "scheduled": "50.00",
                 "paid": "0.00",
@@ -138,14 +138,14 @@ def test_api_payments_create_list_and_manual_generation(tmp_path) -> None:
             assert current_after_edit.status_code == 200
             assert next_after_edit.status_code == 200
             assert current_after_edit.json()["totals"] == {
-                "scheduled": "105.00",
-                "paid": "0.00",
+                "scheduled": "130.00",
+                "paid": "79.25",
                 "skipped": "0.00",
-                "remaining": "25.00",
+                "remaining": "50.00",
             }
             assert next_after_edit.json()["totals"] == {
                 "scheduled": "50.00",
-                "paid": "79.25",
+                "paid": "0.00",
                 "skipped": "0.00",
                 "remaining": "50.00",
             }
@@ -212,7 +212,7 @@ def test_api_payments_create_list_and_manual_generation(tmp_path) -> None:
             assert updated_payment["name"] == "Internet Premium"
             assert updated_payment["expected_amount"] == "95.00"
 
-            cycle_after_update = client.get("/api/cycles/next", params={"today": "2026-02-12"})
+            cycle_after_update = client.get("/api/cycles/current", params={"today": "2026-02-12"})
             assert cycle_after_update.status_code == 200
             assert any(
                 row["payment_name"] == "Internet Premium"

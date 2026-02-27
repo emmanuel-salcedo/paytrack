@@ -19,8 +19,8 @@ def test_current_and_next_cycle_helpers() -> None:
     current_cycle = get_current_cycle(today=date(2026, 1, 20), anchor_payday_date=ANCHOR)
     next_cycle = get_next_cycle_for_date(today=date(2026, 1, 20), anchor_payday_date=ANCHOR)
 
-    assert current_cycle == PayCycle(start=date(2026, 1, 16), end=date(2026, 1, 29))
-    assert next_cycle == PayCycle(start=date(2026, 1, 30), end=date(2026, 2, 12))
+    assert current_cycle == PayCycle(start=date(2026, 1, 15), end=date(2026, 1, 28))
+    assert next_cycle == PayCycle(start=date(2026, 1, 29), end=date(2026, 2, 11))
 
 
 def test_build_occurrence_seeds_for_payment_active_only() -> None:

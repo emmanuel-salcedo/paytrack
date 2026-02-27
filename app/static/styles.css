@@ -266,7 +266,7 @@ button:active {
 .payments-table th,
 .payments-table td {
   text-align: left;
-  padding: 0.55rem 0.45rem;
+  padding: 0.45rem 0.45rem;
   border-bottom: 1px solid rgba(148, 163, 184, 0.20);
   vertical-align: top;
 }
@@ -321,6 +321,32 @@ button:active {
   background: rgba(17, 82, 212, 0.03);
 }
 
+.cycle-table tbody tr:nth-child(even) {
+  background: rgba(241, 245, 249, 0.55);
+}
+
+.amount-cell,
+.amount-text {
+  font-variant-numeric: tabular-nums;
+}
+
+.amount-cell {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.amount-positive {
+  color: #166534;
+}
+
+.amount-warn {
+  color: #92400e;
+}
+
+.amount-strong {
+  color: #0f172a;
+}
+
 .status-pill {
   display: inline-block;
   border-radius: 999px;
@@ -342,11 +368,19 @@ button:active {
   gap: 0.35rem;
 }
 
+.quick-actions {
+  gap: 0.3rem;
+}
+
 .action-group button,
 .actions-cell > form button {
   padding: 0.35rem 0.55rem;
   font-size: 0.78rem;
   border-radius: 8px;
+}
+
+.btn-compact {
+  min-width: 5.4rem;
 }
 
 .actions-cell details {
@@ -665,6 +699,71 @@ pre {
 
   .feature-amount {
     min-width: 0;
+  }
+
+  .cycle-table thead {
+    display: none;
+  }
+
+  .cycle-table,
+  .cycle-table tbody,
+  .cycle-table tr,
+  .cycle-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .cycle-table tbody tr {
+    padding: 0.6rem 0.55rem;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.22);
+    background: #fff;
+  }
+
+  .cycle-table tbody tr:nth-child(even) {
+    background: #f8fbff;
+  }
+
+  .cycle-table td {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.3rem 0;
+    border-bottom: 0;
+  }
+
+  .cycle-table td::before {
+    content: attr(data-label);
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #64748b;
+    min-width: 5.5rem;
+  }
+
+  .cycle-table .actions-cell {
+    margin-top: 0.25rem;
+    padding-top: 0.45rem;
+    border-top: 1px dashed rgba(148, 163, 184, 0.35);
+    display: block;
+    min-width: 0;
+  }
+
+  .cycle-table .actions-cell::before {
+    display: block;
+    margin-bottom: 0.35rem;
+  }
+
+  .cycle-table .quick-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.45rem;
+  }
+
+  .cycle-table .quick-actions form,
+  .cycle-table .quick-actions button {
+    width: 100%;
   }
 }
 

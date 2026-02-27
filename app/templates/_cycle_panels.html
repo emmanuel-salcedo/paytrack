@@ -9,10 +9,10 @@
         <span class="status-pill cycle-count-badge">{{ snapshot.occurrence_count }} items</span>
       </div>
       <div class="row"><span>Range</span><strong>{{ snapshot.cycle_start }} -> {{ snapshot.cycle_end }}</strong></div>
-      <div class="row"><span>Scheduled</span><strong>${{ '%.2f'|format(snapshot.scheduled_total) }}</strong></div>
-      <div class="row"><span>Paid</span><strong>${{ '%.2f'|format(snapshot.paid_total) }}</strong></div>
-      <div class="row"><span>Skipped</span><strong>${{ '%.2f'|format(snapshot.skipped_total) }}</strong></div>
-      <div class="row"><span>Remaining</span><strong>${{ '%.2f'|format(snapshot.remaining_total) }}</strong></div>
+      <div class="row"><span>Scheduled</span><strong class="amount-text">${{ '%.2f'|format(snapshot.scheduled_total) }}</strong></div>
+      <div class="row"><span>Paid</span><strong class="amount-text amount-positive">${{ '%.2f'|format(snapshot.paid_total) }}</strong></div>
+      <div class="row"><span>Skipped</span><strong class="amount-text amount-warn">${{ '%.2f'|format(snapshot.skipped_total) }}</strong></div>
+      <div class="row"><span>Remaining</span><strong class="amount-text amount-strong">${{ '%.2f'|format(snapshot.remaining_total) }}</strong></div>
 
       {% if snapshot.occurrences %}
         <div class="table-wrap">
@@ -29,13 +29,13 @@
           <tbody>
             {% for row in snapshot.occurrences %}
               <tr>
-                <td>{{ row.due_date }}</td>
-                <td>{{ row.payment_name }}</td>
-                <td>${{ '%.2f'|format(row.expected_amount) }}</td>
-                <td><span class="status-pill status-{{ row.status }}">{{ row.status }}</span></td>
-                <td class="actions-cell">
+                <td data-label="Due">{{ row.due_date }}</td>
+                <td data-label="Payment">{{ row.payment_name }}</td>
+                <td data-label="Amount" class="amount-cell">${{ '%.2f'|format(row.expected_amount) }}</td>
+                <td data-label="Status"><span class="status-pill status-{{ row.status }}">{{ row.status }}</span></td>
+                <td data-label="Actions" class="actions-cell">
                   {% if row.status == "scheduled" %}
-                    <div class="action-group">
+                    <div class="action-group quick-actions">
                       <form
                         hx-post="/occurrences/{{ row.occurrence_id }}/mark-paid"
                         hx-target="#interactive-panels"
@@ -44,7 +44,7 @@
                         class="inline-form"
                       >
                         <input type="hidden" name="show_archived" value="{{ '1' if show_archived else '0' }}">
-                        <button type="submit">Mark Paid</button>
+                        <button type="submit" class="btn-compact">Mark Paid</button>
                       </form>
                       <form
                         hx-post="/occurrences/{{ row.occurrence_id }}/skip"
@@ -54,7 +54,7 @@
                         class="inline-form"
                       >
                         <input type="hidden" name="show_archived" value="{{ '1' if show_archived else '0' }}">
-                        <button type="submit">Skip</button>
+                        <button type="submit" class="btn-compact">Skip</button>
                       </form>
                     </div>
                     <details>
@@ -79,7 +79,7 @@
                       </form>
                     </details>
                   {% elif row.status == "completed" %}
-                    <div class="action-group">
+                    <div class="action-group quick-actions">
                       <form
                         hx-post="/occurrences/{{ row.occurrence_id }}/undo-paid"
                         hx-target="#interactive-panels"
@@ -88,7 +88,7 @@
                         class="inline-form"
                       >
                         <input type="hidden" name="show_archived" value="{{ '1' if show_archived else '0' }}">
-                        <button type="submit">Undo</button>
+                        <button type="submit" class="btn-compact">Undo</button>
                       </form>
                     </div>
                     <details>

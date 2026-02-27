@@ -3,16 +3,18 @@ services:
     build: .
     container_name: paytrack
     ports:
-      - "8000:8000"
+      - "${APP_PORT:-8000}:8000"
     environment:
-      DATABASE_URL: sqlite:////data/paytrack.db
-      TZ: America/Los_Angeles
-      DUE_SOON_DAYS: "5"
-      DAILY_SUMMARY_TIME: "07:00"
+      DATABASE_URL: ${DATABASE_URL:-sqlite:////data/paytrack.db}
+      TZ: ${TZ:-America/Los_Angeles}
+      DUE_SOON_DAYS: ${DUE_SOON_DAYS:-5}
+      DAILY_SUMMARY_TIME: ${DAILY_SUMMARY_TIME:-07:00}
+      SQLITE_BUSY_TIMEOUT_MS: ${SQLITE_BUSY_TIMEOUT_MS:-5000}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
     volumes:
       - paytrack_data:/data
     restart: unless-stopped
 
 volumes:
   paytrack_data:
-

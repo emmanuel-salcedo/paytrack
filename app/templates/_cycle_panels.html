@@ -1,6 +1,6 @@
-<section class="grid" aria-label="Cycle snapshots">
-  {% for snapshot in [current_cycle_snapshot, next_cycle_snapshot] %}
-    <article class="card cycle-card">
+{% set snapshot = current_cycle_snapshot %}
+<section class="grid" aria-label="Cycle snapshots" style="grid-template-columns: 1fr;">
+  <article class="card cycle-card">
       <div class="section-head">
         <div>
           <h2>{{ snapshot.label }}</h2>
@@ -124,6 +124,5 @@
       {% else %}
         <p class="muted">No generated occurrences in this cycle yet.</p>
       {% endif %}
-    </article>
-  {% endfor %}
+  </article>
 </section>

@@ -19,8 +19,12 @@ class CreatePaymentInput:
     priority: int | None = None
 
 
-def list_payments(session: Session) -> list[Payment]:
-    return session.scalars(select(Payment).order_by(Payment.is_active.desc(), Payment.name.asc())).all()
+def list_payments(session: Session, *, include_archived: bool = True) -> list[Payment]:
+    stmt = select(Payment)
+    if not include_archived:
+        stmt = stmt.where(Payment.is_active.is_(True))
+    stmt = stmt.order_by(Payment.is_active.desc(), Payment.name.asc())
+    return session.scalars(stmt).all()
 
 
 def create_payment(session: Session, data: CreatePaymentInput) -> Payment:
@@ -41,4 +45,3 @@ def create_payment(session: Session, data: CreatePaymentInput) -> Payment:
     session.commit()
     session.refresh(payment)
     return payment
-

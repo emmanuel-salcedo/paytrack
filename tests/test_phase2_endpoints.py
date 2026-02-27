@@ -791,6 +791,42 @@ def test_notification_log_records_telegram_error_status(tmp_path, monkeypatch) -
         app.dependency_overrides.clear()
 
 
+def test_payments_page_show_archived_toggle(tmp_path) -> None:
+    SessionLocal = _test_session_factory(tmp_path)
+
+    def override_get_db():
+        yield from _override_db(SessionLocal)
+
+    app.dependency_overrides[get_db_session] = override_get_db
+    try:
+        with TestClient(app) as client:
+            created = client.post(
+                "/api/payments",
+                json={
+                    "name": "Insurance",
+                    "expected_amount": "120.00",
+                    "initial_due_date": "2026-01-15",
+                    "recurrence_type": "monthly",
+                },
+            )
+            assert created.status_code == 201
+            payment_id = created.json()["id"]
+
+            paid_off = client.post(f"/payments/page/{payment_id}/paid-off", data={}, headers={"HX-Request": "true"})
+            assert paid_off.status_code == 200
+            assert "Archived" in paid_off.text
+
+            hidden_archived = client.get("/payments", params={"show_archived": "0"})
+            assert hidden_archived.status_code == 200
+            assert "Insurance" not in hidden_archived.text
+
+            shown_archived = client.get("/payments", params={"show_archived": "1"})
+            assert shown_archived.status_code == 200
+            assert "Insurance" in shown_archived.text
+    finally:
+        app.dependency_overrides.clear()
+
+
 def test_history_page_renders_and_filters(tmp_path) -> None:
     SessionLocal = _test_session_factory(tmp_path)
 

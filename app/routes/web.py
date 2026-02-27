@@ -59,6 +59,11 @@ templates = Jinja2Templates(directory=str(Path(__file__).resolve().parents[1] / 
 web_router = APIRouter(tags=["web"])
 
 
+def _show_archived_enabled(value: str | None) -> bool:
+    normalized = (value or "").strip().lower()
+    return normalized in {"1", "true", "yes", "on"}
+
+
 def _build_dashboard_context(
     db: Session,
     *,
@@ -71,10 +76,11 @@ def _build_dashboard_context(
     generation_state: dict[str, object] | None = None,
     action_notice: str | None = None,
     action_error: str | None = None,
+    show_archived: bool = True,
 ) -> dict[str, object]:
     schedule = db.query(PaySchedule).first()
     app_settings = db.query(AppSettings).first()
-    payments = list_payments(db)
+    payments = list_payments(db, include_archived=show_archived)
     current_cycle_snapshot = get_cycle_snapshot(db, today=date.today(), which="current")
     next_cycle_snapshot = get_cycle_snapshot(db, today=date.today(), which="next")
     notifications_unread_count = get_unread_notifications_count(db)
@@ -101,6 +107,8 @@ def _build_dashboard_context(
         "generation_state": generation_state,
         "action_notice": action_notice,
         "action_error": action_error,
+        "show_archived": show_archived,
+        "payments_show_archived_path": "/dashboard",
     }
 
 
@@ -115,9 +123,10 @@ def _build_payments_only_context(
     payment_edit_values: dict[str, str] | None = None,
     action_notice: str | None = None,
     action_error: str | None = None,
+    show_archived: bool = True,
 ) -> dict[str, object]:
     return {
-        "payments": list_payments(db),
+        "payments": list_payments(db, include_archived=show_archived),
         "payment_error": payment_error,
         "payment_form_errors": payment_form_errors or {},
         "payment_form_values": payment_form_values
@@ -139,6 +148,8 @@ def _build_payments_only_context(
         "payments_paid_off_path_prefix": "/payments/page",
         "payments_reactivate_path_prefix": "/payments/page",
         "payments_update_path_prefix": "/payments/page",
+        "show_archived": show_archived,
+        "payments_show_archived_path": "/payments",
     }
 
 
@@ -245,18 +256,26 @@ def root_redirect() -> RedirectResponse:
 
 
 @web_router.get("/dashboard")
-def dashboard_page(request: Request, db: Session = Depends(get_db_session)):
+def dashboard_page(
+    request: Request,
+    show_archived: str = "1",
+    db: Session = Depends(get_db_session),
+):
     # First-request-of-day fallback: safe to call on every request because job_runs guard de-dupes.
     run_generate_occurrences_once_per_day_in_session_if_ready(db, today=date.today())
     run_notification_jobs_once_per_day_in_session_if_ready(db, today=date.today(), now=datetime.now())
-    return _render_dashboard_page(request, db)
+    return _render_dashboard_page(request, db, show_archived=_show_archived_enabled(show_archived))
 
 
 @web_router.get("/payments")
-def payments_page(request: Request, db: Session = Depends(get_db_session)):
+def payments_page(
+    request: Request,
+    show_archived: str = "1",
+    db: Session = Depends(get_db_session),
+):
     run_generate_occurrences_once_per_day_in_session_if_ready(db, today=date.today())
     run_notification_jobs_once_per_day_in_session_if_ready(db, today=date.today(), now=datetime.now())
-    return _render_payments_page(request, db)
+    return _render_payments_page(request, db, show_archived=_show_archived_enabled(show_archived))
 
 
 @web_router.get("/upcoming")
@@ -279,6 +298,7 @@ def _render_interactive_panels(
     generation_state: dict[str, object] | None = None,
     action_notice: str | None = None,
     action_error: str | None = None,
+    show_archived: bool = True,
 ):
     return templates.TemplateResponse(
         request,
@@ -294,6 +314,7 @@ def _render_interactive_panels(
             generation_state=generation_state,
             action_notice=action_notice,
             action_error=action_error,
+            show_archived=show_archived,
         ),
     )
 
@@ -438,8 +459,10 @@ def create_payment_web(
     initial_due_date: str = Form(...),
     recurrence_type: str = Form(...),
     priority: str = Form(""),
+    show_archived: str = Form("1"),
     db: Session = Depends(get_db_session),
 ):
+    show_archived_enabled = _show_archived_enabled(show_archived)
     try:
         parsed, field_errors, field_values = _parse_payment_form_fields(
             name=name,
@@ -455,6 +478,7 @@ def create_payment_web(
                 payment_form_errors=field_errors,
                 payment_form_values=field_values,
                 action_error="Payment create failed.",
+                show_archived=show_archived_enabled,
             )
         create_payment(
             db,
@@ -467,9 +491,20 @@ def create_payment_web(
             ),
         )
         _notify_best_effort(db, type="payment_created", title="Payment Added", body=f"{parsed.name} was added.")
-        return _render_interactive_panels(request, db, action_notice="Payment added.")
+        return _render_interactive_panels(
+            request,
+            db,
+            action_notice="Payment added.",
+            show_archived=show_archived_enabled,
+        )
     except (ValueError, InvalidOperation) as exc:
-        return _render_interactive_panels(request, db, payment_error=str(exc), action_error="Payment create failed.")
+        return _render_interactive_panels(
+            request,
+            db,
+            payment_error=str(exc),
+            action_error="Payment create failed.",
+            show_archived=show_archived_enabled,
+        )
 
 
 @web_router.post("/payments/page/create")
@@ -480,8 +515,10 @@ def create_payment_web_page(
     initial_due_date: str = Form(...),
     recurrence_type: str = Form(...),
     priority: str = Form(""),
+    show_archived: str = Form("1"),
     db: Session = Depends(get_db_session),
 ):
+    show_archived_enabled = _show_archived_enabled(show_archived)
     parsed, field_errors, field_values = _parse_payment_form_fields(
         name=name,
         expected_amount=expected_amount,
@@ -496,6 +533,7 @@ def create_payment_web_page(
             payment_form_errors=field_errors,
             payment_form_values=field_values,
             action_error="Payment create failed.",
+            show_archived=show_archived_enabled,
         )
     try:
         create_payment(
@@ -509,17 +547,29 @@ def create_payment_web_page(
             ),
         )
         _notify_best_effort(db, type="payment_created", title="Payment Added", body=f"{parsed.name} was added.")
-        return _render_payments_page_shell(request, db, action_notice="Payment added.")
+        return _render_payments_page_shell(
+            request,
+            db,
+            action_notice="Payment added.",
+            show_archived=show_archived_enabled,
+        )
     except ValueError as exc:
-        return _render_payments_page_shell(request, db, action_error=str(exc))
+        return _render_payments_page_shell(
+            request,
+            db,
+            action_error=str(exc),
+            show_archived=show_archived_enabled,
+        )
 
 
 @web_router.post("/admin/run-generation")
 def run_generation_web(
     request: Request,
     horizon_days: int = Form(90),
+    show_archived: str = Form("1"),
     db: Session = Depends(get_db_session),
 ):
+    show_archived_enabled = _show_archived_enabled(show_archived)
     if horizon_days < 1 or horizon_days > 365:
         horizon_days = 90
 
@@ -537,6 +587,7 @@ def run_generation_web(
             "ran": True,
         },
         action_notice="Manual occurrence generation completed.",
+        show_archived=show_archived_enabled,
     )
 
 
@@ -544,8 +595,10 @@ def run_generation_web(
 def run_generation_once_today_web(
     request: Request,
     horizon_days: int = Form(90),
+    show_archived: str = Form("1"),
     db: Session = Depends(get_db_session),
 ):
+    show_archived_enabled = _show_archived_enabled(show_archived)
     if horizon_days < 1 or horizon_days > 365:
         horizon_days = 90
 
@@ -573,6 +626,7 @@ def run_generation_once_today_web(
         action_notice=(
             "Guarded daily generation executed." if guarded.ran else "Guard blocked duplicate daily generation."
         ),
+        show_archived=show_archived_enabled,
     )
 
 
@@ -582,8 +636,10 @@ def mark_paid_web(
     occurrence_id: int,
     amount_paid: str = Form(""),
     paid_date: str = Form(""),
+    show_archived: str = Form("1"),
     db: Session = Depends(get_db_session),
 ):
+    show_archived_enabled = _show_archived_enabled(show_archived)
     try:
         parsed_amount = Decimal(amount_paid) if amount_paid.strip() else None
         parsed_paid_date = date.fromisoformat(paid_date) if paid_date.strip() else None
@@ -601,17 +657,29 @@ def mark_paid_web(
             body=f"Occurrence #{occurrence_id} marked paid.",
             occurrence_id=occurrence_id,
         )
-        return _render_interactive_panels(request, db, action_notice="Occurrence marked paid.")
+        return _render_interactive_panels(
+            request,
+            db,
+            action_notice="Occurrence marked paid.",
+            show_archived=show_archived_enabled,
+        )
     except (ActionValidationError, InvalidOperation, ValueError) as exc:
-        return _render_interactive_panels(request, db, action_error=str(exc))
+        return _render_interactive_panels(
+            request,
+            db,
+            action_error=str(exc),
+            show_archived=show_archived_enabled,
+        )
 
 
 @web_router.post("/occurrences/{occurrence_id}/undo-paid")
 def undo_mark_paid_web(
     request: Request,
     occurrence_id: int,
+    show_archived: str = Form("1"),
     db: Session = Depends(get_db_session),
 ):
+    show_archived_enabled = _show_archived_enabled(show_archived)
     try:
         undo_mark_paid(db, occurrence_id=occurrence_id)
         _notify_best_effort(
@@ -621,17 +689,29 @@ def undo_mark_paid_web(
             body=f"Occurrence #{occurrence_id} returned to scheduled.",
             occurrence_id=occurrence_id,
         )
-        return _render_interactive_panels(request, db, action_notice="Paid status undone.")
+        return _render_interactive_panels(
+            request,
+            db,
+            action_notice="Paid status undone.",
+            show_archived=show_archived_enabled,
+        )
     except ActionValidationError as exc:
-        return _render_interactive_panels(request, db, action_error=str(exc))
+        return _render_interactive_panels(
+            request,
+            db,
+            action_error=str(exc),
+            show_archived=show_archived_enabled,
+        )
 
 
 @web_router.post("/occurrences/{occurrence_id}/skip")
 def skip_occurrence_web(
     request: Request,
     occurrence_id: int,
+    show_archived: str = Form("1"),
     db: Session = Depends(get_db_session),
 ):
+    show_archived_enabled = _show_archived_enabled(show_archived)
     try:
         skip_occurrence(db, occurrence_id=occurrence_id)
         _notify_best_effort(
@@ -641,9 +721,19 @@ def skip_occurrence_web(
             body=f"Occurrence #{occurrence_id} skipped for this cycle.",
             occurrence_id=occurrence_id,
         )
-        return _render_interactive_panels(request, db, action_notice="Occurrence skipped for this cycle.")
+        return _render_interactive_panels(
+            request,
+            db,
+            action_notice="Occurrence skipped for this cycle.",
+            show_archived=show_archived_enabled,
+        )
     except ActionValidationError as exc:
-        return _render_interactive_panels(request, db, action_error=str(exc))
+        return _render_interactive_panels(
+            request,
+            db,
+            action_error=str(exc),
+            show_archived=show_archived_enabled,
+        )
 
 
 @web_router.post("/payments/{payment_id}/paid-off")
@@ -651,8 +741,10 @@ def mark_paid_off_web(
     request: Request,
     payment_id: int,
     paid_off_date: str = Form(""),
+    show_archived: str = Form("1"),
     db: Session = Depends(get_db_session),
 ):
+    show_archived_enabled = _show_archived_enabled(show_archived)
     try:
         resolved_date = date.fromisoformat(paid_off_date) if paid_off_date.strip() else date.today()
         result = mark_payment_paid_off(db, payment_id=payment_id, paid_off_date=resolved_date)
@@ -666,17 +758,25 @@ def mark_paid_off_web(
             request,
             db,
             action_notice=f"Payment marked paid off. Canceled {result.canceled_occurrences_count} future occurrences.",
+            show_archived=show_archived_enabled,
         )
     except (ActionValidationError, ValueError) as exc:
-        return _render_interactive_panels(request, db, action_error=str(exc))
+        return _render_interactive_panels(
+            request,
+            db,
+            action_error=str(exc),
+            show_archived=show_archived_enabled,
+        )
 
 
 @web_router.post("/payments/{payment_id}/reactivate")
 def reactivate_payment_web(
     request: Request,
     payment_id: int,
+    show_archived: str = Form("1"),
     db: Session = Depends(get_db_session),
 ):
+    show_archived_enabled = _show_archived_enabled(show_archived)
     try:
         result = reactivate_payment(db, payment_id=payment_id, today=date.today())
         _notify_best_effort(
@@ -691,17 +791,25 @@ def reactivate_payment_web(
             action_notice=(
                 f"Payment reactivated. Generated {result.generated_occurrences_count} future occurrences."
             ),
+            show_archived=show_archived_enabled,
         )
     except ActionValidationError as exc:
-        return _render_interactive_panels(request, db, action_error=str(exc))
+        return _render_interactive_panels(
+            request,
+            db,
+            action_error=str(exc),
+            show_archived=show_archived_enabled,
+        )
 
 
 @web_router.post("/payments/page/{payment_id}/reactivate")
 def reactivate_payment_web_page(
     request: Request,
     payment_id: int,
+    show_archived: str = Form("1"),
     db: Session = Depends(get_db_session),
 ):
+    show_archived_enabled = _show_archived_enabled(show_archived)
     try:
         result = reactivate_payment(db, payment_id=payment_id, today=date.today())
         _notify_best_effort(
@@ -714,9 +822,15 @@ def reactivate_payment_web_page(
             request,
             db,
             action_notice=f"Payment reactivated. Generated {result.generated_occurrences_count} future occurrences.",
+            show_archived=show_archived_enabled,
         )
     except ActionValidationError as exc:
-        return _render_payments_page_shell(request, db, action_error=str(exc))
+        return _render_payments_page_shell(
+            request,
+            db,
+            action_error=str(exc),
+            show_archived=show_archived_enabled,
+        )
 
 
 @web_router.post("/payments/{payment_id}/update")
@@ -728,8 +842,10 @@ def update_payment_web(
     initial_due_date: str = Form(...),
     recurrence_type: str = Form(...),
     priority: str = Form(""),
+    show_archived: str = Form("1"),
     db: Session = Depends(get_db_session),
 ):
+    show_archived_enabled = _show_archived_enabled(show_archived)
     parsed, field_errors, field_values = _parse_payment_form_fields(
         name=name,
         expected_amount=expected_amount,
@@ -745,6 +861,7 @@ def update_payment_web(
             payment_edit_errors=field_errors,
             payment_edit_values=field_values,
             action_error="Payment update failed.",
+            show_archived=show_archived_enabled,
         )
     try:
         result = update_payment_and_rebuild_future_scheduled(
@@ -765,6 +882,7 @@ def update_payment_web(
             action_notice=(
                 f"Payment updated. Rebuilt {result.generated_occurrences_count} future scheduled occurrences."
             ),
+            show_archived=show_archived_enabled,
         )
     except ActionValidationError as exc:
         return _render_interactive_panels(
@@ -773,6 +891,7 @@ def update_payment_web(
             payment_edit_target_id=payment_id,
             payment_edit_values=field_values,
             action_error=str(exc),
+            show_archived=show_archived_enabled,
         )
 
 
@@ -785,8 +904,10 @@ def update_payment_web_page(
     initial_due_date: str = Form(...),
     recurrence_type: str = Form(...),
     priority: str = Form(""),
+    show_archived: str = Form("1"),
     db: Session = Depends(get_db_session),
 ):
+    show_archived_enabled = _show_archived_enabled(show_archived)
     parsed, field_errors, field_values = _parse_payment_form_fields(
         name=name,
         expected_amount=expected_amount,
@@ -802,6 +923,7 @@ def update_payment_web_page(
             payment_edit_errors=field_errors,
             payment_edit_values=field_values,
             action_error="Payment update failed.",
+            show_archived=show_archived_enabled,
         )
     try:
         result = update_payment_and_rebuild_future_scheduled(
@@ -820,6 +942,7 @@ def update_payment_web_page(
             request,
             db,
             action_notice=f"Payment updated. Rebuilt {result.generated_occurrences_count} future scheduled occurrences.",
+            show_archived=show_archived_enabled,
         )
     except ActionValidationError as exc:
         return _render_payments_page_shell(
@@ -828,6 +951,7 @@ def update_payment_web_page(
             payment_edit_target_id=payment_id,
             payment_edit_values=field_values,
             action_error=str(exc),
+            show_archived=show_archived_enabled,
         )
 
 
@@ -836,8 +960,10 @@ def mark_paid_off_web_page(
     request: Request,
     payment_id: int,
     paid_off_date: str = Form(""),
+    show_archived: str = Form("1"),
     db: Session = Depends(get_db_session),
 ):
+    show_archived_enabled = _show_archived_enabled(show_archived)
     try:
         resolved_date = date.fromisoformat(paid_off_date) if paid_off_date.strip() else date.today()
         result = mark_payment_paid_off(db, payment_id=payment_id, paid_off_date=resolved_date)
@@ -851,9 +977,15 @@ def mark_paid_off_web_page(
             request,
             db,
             action_notice=f"Payment marked paid off. Canceled {result.canceled_occurrences_count} future occurrences.",
+            show_archived=show_archived_enabled,
         )
     except (ActionValidationError, ValueError) as exc:
-        return _render_payments_page_shell(request, db, action_error=str(exc))
+        return _render_payments_page_shell(
+            request,
+            db,
+            action_error=str(exc),
+            show_archived=show_archived_enabled,
+        )
 
 
 @web_router.get("/history")

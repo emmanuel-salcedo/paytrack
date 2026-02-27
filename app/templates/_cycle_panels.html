@@ -43,6 +43,7 @@
                         method="post"
                         class="inline-form"
                       >
+                        <input type="hidden" name="show_archived" value="{{ '1' if show_archived else '0' }}">
                         <button type="submit">Mark Paid</button>
                       </form>
                       <form
@@ -52,6 +53,7 @@
                         method="post"
                         class="inline-form"
                       >
+                        <input type="hidden" name="show_archived" value="{{ '1' if show_archived else '0' }}">
                         <button type="submit">Skip</button>
                       </form>
                     </div>
@@ -64,6 +66,7 @@
                         method="post"
                         class="stack"
                       >
+                        <input type="hidden" name="show_archived" value="{{ '1' if show_archived else '0' }}">
                         <label>
                           <span>Amount Paid</span>
                           <input type="number" name="amount_paid" min="0" step="0.01" placeholder="{{ '%.2f'|format(row.expected_amount) }}">
@@ -84,6 +87,7 @@
                         method="post"
                         class="inline-form"
                       >
+                        <input type="hidden" name="show_archived" value="{{ '1' if show_archived else '0' }}">
                         <button type="submit">Undo</button>
                       </form>
                     </div>
@@ -96,6 +100,7 @@
                         method="post"
                         class="stack"
                       >
+                        <input type="hidden" name="show_archived" value="{{ '1' if show_archived else '0' }}">
                         <label>
                           <span>Amount Paid</span>
                           <input type="number" name="amount_paid" min="0" step="0.01">

@@ -3,6 +3,8 @@
 {% set payments_paid_off_path_prefix = payments_paid_off_path_prefix|default('/payments') %}
 {% set payments_reactivate_path_prefix = payments_reactivate_path_prefix|default('/payments') %}
 {% set payments_update_path_prefix = payments_update_path_prefix|default('/payments') %}
+{% set payments_show_archived_path = payments_show_archived_path|default('/payments') %}
+{% set show_archived = show_archived|default(true) %}
 
 <div id="payments-panel">
   <article class="card">
@@ -11,6 +13,15 @@
         <h2>Payments (Minimal CRUD)</h2>
         <p class="muted">Create, edit, archive, and reactivate payment schedules.</p>
       </div>
+      <form method="get" action="{{ payments_show_archived_path }}" class="inline-form">
+        <input type="hidden" name="show_archived" value="0">
+        <label class="toggle-line">
+          <span>
+            <input type="checkbox" name="show_archived" value="1" {% if show_archived %}checked{% endif %} onchange="this.form.submit()">
+            Show archived
+          </span>
+        </label>
+      </form>
     </div>
 
     <form
@@ -20,6 +31,7 @@
       method="post"
       class="stack"
     >
+      <input type="hidden" name="show_archived" value="{{ '1' if show_archived else '0' }}">
       <div class="form-grid">
         <label>
           <span>Name</span>
@@ -94,6 +106,7 @@
                       method="post"
                       class="inline-form"
                     >
+                      <input type="hidden" name="show_archived" value="{{ '1' if show_archived else '0' }}">
                       <button type="submit">Paid Off</button>
                     </form>
                     <details {% if payment_edit_target_id == payment.id and payment_edit_errors %}open{% endif %}>
@@ -105,6 +118,7 @@
                         method="post"
                         class="stack payment-edit-form"
                       >
+                        <input type="hidden" name="show_archived" value="{{ '1' if show_archived else '0' }}">
                         {% set edit_values = payment_edit_values if payment_edit_target_id == payment.id else {} %}
                         {% set edit_errors = payment_edit_errors if payment_edit_target_id == payment.id else {} %}
                         <label>
@@ -151,6 +165,7 @@
                         method="post"
                         class="stack"
                       >
+                        <input type="hidden" name="show_archived" value="{{ '1' if show_archived else '0' }}">
                         <label>
                           <span>Paid Off Date</span>
                           <input type="date" name="paid_off_date">
@@ -167,6 +182,7 @@
                     method="post"
                     class="inline-form"
                   >
+                    <input type="hidden" name="show_archived" value="{{ '1' if show_archived else '0' }}">
                     <button type="submit">Reactivate</button>
                   </form>
                 {% endif %}

@@ -9,6 +9,7 @@
       method="post"
       class="inline-form"
     >
+      <input type="hidden" name="show_archived" value="{{ '1' if show_archived else '0' }}">
       <label>
         <span>Horizon (days)</span>
         <input type="number" name="horizon_days" min="1" max="365" value="{{ generation_state.horizon_days if generation_state else 90 }}">
@@ -23,6 +24,7 @@
       class="inline-form"
     >
       <input type="hidden" name="horizon_days" value="{{ generation_state.horizon_days if generation_state else 90 }}">
+      <input type="hidden" name="show_archived" value="{{ '1' if show_archived else '0' }}">
       <button type="submit">Run Once Today (Guarded)</button>
     </form>
     {% if generation_state %}

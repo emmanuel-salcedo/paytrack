@@ -1,0 +1,28 @@
+version: "3.8"
+
+services:
+  paytrack:
+    # Use pre-built image instead of building in Portainer.
+    # Build it first on your Docker host:
+    # docker build -t paytrack-app:latest .
+    image: paytrack-app:latest
+    container_name: paytrack-app
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: "sqlite:////data/paytrack.db"
+      TZ: "America/Los_Angeles"
+      DUE_SOON_DAYS: "5"
+      DAILY_SUMMARY_TIME: "07:00"
+      SQLITE_BUSY_TIMEOUT_MS: "5000"
+      TELEGRAM_BOT_TOKEN: ""
+      TELEGRAM_CHAT_ID: ""
+    volumes:
+      - /mnt/cerberus/apps/PayTrack/data:/data
+    restart: unless-stopped
+    networks:
+      - paytrack-network
+
+networks:
+  paytrack-network:
+    driver: bridge

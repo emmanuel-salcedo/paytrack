@@ -1,6 +1,8 @@
 services:
   paytrack:
-    build: .
+    # Use pre-built image instead of building in Portainer.
+    # Build once on host: docker build -t paytrack-app:latest .
+    image: paytrack-app:latest
     container_name: paytrack
     ports:
       - "${APP_PORT:-8000}:8000"

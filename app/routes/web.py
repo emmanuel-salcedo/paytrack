@@ -356,6 +356,7 @@ def _render_notifications_page(
     notifications_sort: str = "newest",
     delivery_log_page_num: int = 1,
     delivery_log_per_page: int = 20,
+    delivery_log_sort: str = "newest",
     delivery_log_filters: NotificationLogFilters | None = None,
 ):
     notif_offset = max(notifications_page_num - 1, 0) * notifications_per_page
@@ -377,6 +378,7 @@ def _render_notifications_page(
                 limit=delivery_log_per_page,
                 offset=log_offset,
                 filters=delivery_log_filters,
+                sort=delivery_log_sort,
             ),
             "notifications_unread_count": get_unread_notifications_count(db),
             "notifications_notice": notifications_notice,
@@ -389,6 +391,7 @@ def _render_notifications_page(
             "notifications_has_next": notif_offset + notifications_per_page < notifications_total,
             "delivery_log_page_num": delivery_log_page_num,
             "delivery_log_per_page": delivery_log_per_page,
+            "delivery_log_sort": delivery_log_sort,
             "delivery_log_total": delivery_log_total,
             "delivery_log_has_prev": delivery_log_page_num > 1,
             "delivery_log_has_next": log_offset + delivery_log_per_page < delivery_log_total,
@@ -1051,6 +1054,7 @@ def notifications_page(
     sort: str = "newest",
     log_page: int = 1,
     log_per_page: int = 20,
+    log_sort: str = "newest",
     log_type: str | None = None,
     log_channel: str | None = None,
     log_status: str | None = None,
@@ -1062,6 +1066,10 @@ def notifications_page(
 ):
     per_page = min(max(per_page, 1), 100)
     log_per_page = min(max(log_per_page, 1), 100)
+    if sort not in {"newest", "oldest", "unread_first"}:
+        sort = "newest"
+    if log_sort not in {"newest", "oldest"}:
+        log_sort = "newest"
     parsed_log_start = date.fromisoformat(log_start_date) if log_start_date else None
     parsed_log_end = date.fromisoformat(log_end_date) if log_end_date else None
     delivery_log_filters = NotificationLogFilters(
@@ -1081,6 +1089,7 @@ def notifications_page(
         notifications_sort=sort,
         delivery_log_page_num=max(log_page, 1),
         delivery_log_per_page=log_per_page,
+        delivery_log_sort=log_sort,
         delivery_log_filters=delivery_log_filters,
     )
 

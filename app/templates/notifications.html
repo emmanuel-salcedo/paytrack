@@ -59,6 +59,7 @@
         <input type="hidden" name="page" value="1">
         <input type="hidden" name="log_page" value="{{ delivery_log_page_num }}">
         <input type="hidden" name="log_per_page" value="{{ delivery_log_per_page }}">
+        <input type="hidden" name="log_sort" value="{{ delivery_log_sort }}">
         <button type="submit">Apply</button>
       </form>
     </div>
@@ -164,12 +165,19 @@
           <option value="50" {% if delivery_log_per_page == 50 %}selected{% endif %}>50</option>
         </select>
       </label>
+      <label>
+        <span>Log Sort</span>
+        <select name="log_sort">
+          <option value="newest" {% if delivery_log_sort == 'newest' %}selected{% endif %}>Newest</option>
+          <option value="oldest" {% if delivery_log_sort == 'oldest' %}selected{% endif %}>Oldest</option>
+        </select>
+      </label>
       <input type="hidden" name="page" value="{{ notifications_page_num }}">
       <input type="hidden" name="per_page" value="{{ notifications_per_page }}">
       <input type="hidden" name="sort" value="{{ notifications_sort }}">
       <input type="hidden" name="log_page" value="1">
       <button type="submit">Apply</button>
-      <a class="link-btn" href="/notifications?page={{ notifications_page_num }}&per_page={{ notifications_per_page }}&sort={{ notifications_sort }}">Clear Log Filters</a>
+      <a class="link-btn" href="/notifications?page={{ notifications_page_num }}&per_page={{ notifications_per_page }}&sort={{ notifications_sort }}&log_sort={{ delivery_log_sort }}">Clear Log Filters</a>
     </form>
   </div>
 
@@ -183,6 +191,7 @@
           <th>Bucket</th>
           <th>Dedup Key</th>
           <th>Status</th>
+          <th>Message ID</th>
           <th>Delivered</th>
           <th>Error</th>
         </tr>
@@ -198,6 +207,7 @@
             <td>
               <span class="status-pill {% if row.status == 'sent' %}status-completed{% elif row.status == 'error' %}status-canceled{% else %}status-skipped{% endif %}">{{ row.status }}</span>
             </td>
+            <td>{{ row.telegram_message_id or '-' }}</td>
             <td>{{ row.delivered_at.strftime('%Y-%m-%d %H:%M') if row.delivered_at else '-' }}</td>
             <td class="muted">{{ row.error_message or '-' }}</td>
           </tr>
@@ -208,10 +218,10 @@
       <span class="muted">Showing {{ delivery_logs|length }} of {{ delivery_log_total }} log rows (page {{ delivery_log_page_num }})</span>
       <div class="inline-form">
         {% if delivery_log_has_prev %}
-          <a class="link-btn" href="/notifications?page={{ notifications_page_num }}&per_page={{ notifications_per_page }}&sort={{ notifications_sort }}&log_page={{ delivery_log_page_num - 1 }}&log_per_page={{ delivery_log_per_page }}&log_type={{ delivery_log_filters.type }}&log_channel={{ delivery_log_filters.channel }}&log_status={{ delivery_log_filters.status }}&log_start_date={{ delivery_log_filters.start_date }}&log_end_date={{ delivery_log_filters.end_date }}">Previous</a>
+          <a class="link-btn" href="/notifications?page={{ notifications_page_num }}&per_page={{ notifications_per_page }}&sort={{ notifications_sort }}&log_page={{ delivery_log_page_num - 1 }}&log_per_page={{ delivery_log_per_page }}&log_sort={{ delivery_log_sort }}&log_type={{ delivery_log_filters.type }}&log_channel={{ delivery_log_filters.channel }}&log_status={{ delivery_log_filters.status }}&log_start_date={{ delivery_log_filters.start_date }}&log_end_date={{ delivery_log_filters.end_date }}">Previous</a>
         {% endif %}
         {% if delivery_log_has_next %}
-          <a class="link-btn" href="/notifications?page={{ notifications_page_num }}&per_page={{ notifications_per_page }}&sort={{ notifications_sort }}&log_page={{ delivery_log_page_num + 1 }}&log_per_page={{ delivery_log_per_page }}&log_type={{ delivery_log_filters.type }}&log_channel={{ delivery_log_filters.channel }}&log_status={{ delivery_log_filters.status }}&log_start_date={{ delivery_log_filters.start_date }}&log_end_date={{ delivery_log_filters.end_date }}">Next</a>
+          <a class="link-btn" href="/notifications?page={{ notifications_page_num }}&per_page={{ notifications_per_page }}&sort={{ notifications_sort }}&log_page={{ delivery_log_page_num + 1 }}&log_per_page={{ delivery_log_per_page }}&log_sort={{ delivery_log_sort }}&log_type={{ delivery_log_filters.type }}&log_channel={{ delivery_log_filters.channel }}&log_status={{ delivery_log_filters.status }}&log_start_date={{ delivery_log_filters.start_date }}&log_end_date={{ delivery_log_filters.end_date }}">Next</a>
         {% endif %}
       </div>
     </div>

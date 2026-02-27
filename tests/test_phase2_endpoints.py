@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Generator
+from datetime import datetime
 
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -946,5 +947,154 @@ def test_notifications_api_pagination_filters_and_actions(tmp_path) -> None:
             unread_count_final = client.get("/api/notifications/unread-count")
             assert unread_count_final.status_code == 200
             assert unread_count_final.json()["unread_count"] == 0
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_api_enum_validation_for_notifications_and_logs(tmp_path) -> None:
+    SessionLocal = _test_session_factory(tmp_path)
+
+    def override_get_db():
+        yield from _override_db(SessionLocal)
+
+    app.dependency_overrides[get_db_session] = override_get_db
+    try:
+        with TestClient(app) as client:
+            bad_notifications_sort = client.get("/api/notifications", params={"sort": "bad"})
+            assert bad_notifications_sort.status_code == 400
+            assert "Invalid sort" in bad_notifications_sort.json()["detail"]
+
+            bad_read_state = client.get("/api/notifications", params={"read_state": "all"})
+            assert bad_read_state.status_code == 400
+            assert "Invalid read_state" in bad_read_state.json()["detail"]
+
+            bad_log_sort = client.get("/api/notification-logs", params={"sort": "down"})
+            assert bad_log_sort.status_code == 400
+            assert "Invalid sort" in bad_log_sort.json()["detail"]
+
+            bad_log_status = client.get("/api/notification-logs", params={"status": "done"})
+            assert bad_log_status.status_code == 400
+            assert "Invalid status" in bad_log_status.json()["detail"]
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_telegram_retry_and_message_id_logged(tmp_path, monkeypatch) -> None:
+    SessionLocal = _test_session_factory(tmp_path)
+
+    def override_get_db():
+        yield from _override_db(SessionLocal)
+
+    app.dependency_overrides[get_db_session] = override_get_db
+    try:
+        from app.services.telegram_service import TelegramDeliveryError, TelegramSendResult
+
+        calls = {"count": 0}
+
+        def flaky_send(**kwargs):
+            calls["count"] += 1
+            if calls["count"] < 3:
+                raise TelegramDeliveryError("temporary telegram failure", retryable=True)
+            return TelegramSendResult(ok=True, message_id=987654, raw={"ok": True})
+
+        monkeypatch.setattr("app.services.notification_jobs_service.send_telegram_message", flaky_send)
+        monkeypatch.setattr("app.services.notification_jobs_service.TELEGRAM_RETRY_SLEEP_SECONDS", 0.0)
+
+        with TestClient(app) as client:
+            client.post(
+                "/api/settings/app",
+                json={
+                    "due_soon_days": 5,
+                    "daily_summary_time": "00:00",
+                    "telegram_enabled": True,
+                    "telegram_bot_token": "token",
+                    "telegram_chat_id": "chat",
+                },
+            )
+            client.post(
+                "/api/payments",
+                json={
+                    "name": "Gym",
+                    "expected_amount": "25.00",
+                    "initial_due_date": "2026-01-10",
+                    "recurrence_type": "weekly",
+                },
+            )
+            client.post("/api/admin/run-generation", json={"today": "2026-01-01", "horizon_days": 30})
+            run_jobs = client.post(
+                "/api/admin/run-notification-jobs",
+                params={"today": "2026-01-15", "now": "2026-01-15T08:00:00"},
+            )
+            assert run_jobs.status_code == 200
+            assert calls["count"] >= 3
+
+            with SessionLocal() as session:
+                telegram_logs = session.query(NotificationLog).filter(NotificationLog.channel == "telegram").all()
+                assert telegram_logs
+                assert any(row.status == "sent" for row in telegram_logs)
+                assert any(row.telegram_message_id == "987654" for row in telegram_logs)
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_daily_summary_dst_time_gate(tmp_path, monkeypatch) -> None:
+    SessionLocal = _test_session_factory(tmp_path)
+
+    def override_get_db():
+        yield from _override_db(SessionLocal)
+
+    app.dependency_overrides[get_db_session] = override_get_db
+    try:
+        def fake_resolve_local_now(*, now, timezone_name):
+            if now is None:
+                return datetime(2026, 3, 8, 0, 0, 0)
+            iso = now.isoformat()
+            if iso.startswith("2026-03-08T09:30:00+00:00"):
+                return datetime(2026, 3, 8, 1, 30, 0)
+            if iso.startswith("2026-03-08T10:30:00+00:00"):
+                return datetime(2026, 3, 8, 3, 30, 0)
+            return now.replace(tzinfo=None)
+
+        monkeypatch.setattr("app.services.notification_jobs_service._resolve_local_now", fake_resolve_local_now)
+
+        with TestClient(app) as client:
+            client.post(
+                "/api/settings/pay-schedule",
+                json={"anchor_payday_date": "2026-01-15", "timezone": "America/Los_Angeles"},
+            )
+            client.post(
+                "/api/settings/app",
+                json={
+                    "due_soon_days": 5,
+                    "daily_summary_time": "03:00",
+                    "telegram_enabled": False,
+                },
+            )
+            client.post(
+                "/api/payments",
+                json={
+                    "name": "Water",
+                    "expected_amount": "40.00",
+                    "initial_due_date": "2026-03-08",
+                    "recurrence_type": "one_time",
+                },
+            )
+            client.post("/api/admin/run-generation", json={"today": "2026-03-01", "horizon_days": 14})
+
+            before_gate = client.post(
+                "/api/admin/run-notification-jobs",
+                params={"today": "2026-03-08", "now": "2026-03-08T09:30:00+00:00"},
+            )
+            assert before_gate.status_code == 200
+            assert before_gate.json()["daily_summary_deferred_before_time"] is True
+            assert before_gate.json()["daily_summary_created"] == 0
+
+            after_gate = client.post(
+                "/api/admin/run-notification-jobs",
+                params={"today": "2026-03-08", "now": "2026-03-08T10:30:00+00:00"},
+            )
+            assert after_gate.status_code == 200
+            assert after_gate.json()["daily_summary_deferred_before_time"] is False
+            assert after_gate.json()["daily_summary_created"] == 1
     finally:
         app.dependency_overrides.clear()

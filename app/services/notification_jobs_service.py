@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
+import time as time_module
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from sqlalchemy import func, inspect, select
@@ -21,6 +22,8 @@ from app.services.telegram_service import TelegramDeliveryError, send_telegram_m
 
 
 NOTIFICATION_JOBS_JOB_NAME = "run_notification_jobs"
+TELEGRAM_SEND_MAX_ATTEMPTS = 3
+TELEGRAM_RETRY_SLEEP_SECONDS = 0.25
 
 
 @dataclass(frozen=True)
@@ -159,19 +162,35 @@ def _maybe_send_telegram(
     if log_row is None:
         return False, False
 
-    try:
-        send_telegram_message(
-            bot_token=app_settings.telegram_bot_token,
-            chat_id=app_settings.telegram_chat_id,
-            text=text,
-            parse_mode="MarkdownV2",
-        )
-        finalize_notification_log_entry(session, log_id=log_row.id, status="sent")
-        return True, False
-    except TelegramDeliveryError as exc:
-        # Prevent duplicate spam after connectivity/auth failures; an in-app notification is still written.
-        finalize_notification_log_entry(session, log_id=log_row.id, status="error", error_message=str(exc))
-        return False, True
+    last_error: TelegramDeliveryError | None = None
+    for attempt in range(1, TELEGRAM_SEND_MAX_ATTEMPTS + 1):
+        try:
+            result = send_telegram_message(
+                bot_token=app_settings.telegram_bot_token,
+                chat_id=app_settings.telegram_chat_id,
+                text=text,
+                parse_mode="MarkdownV2",
+            )
+            finalize_notification_log_entry(
+                session,
+                log_id=log_row.id,
+                status="sent",
+                telegram_message_id=None if result.message_id is None else str(result.message_id),
+            )
+            return True, False
+        except TelegramDeliveryError as exc:
+            last_error = exc
+            if not exc.retryable or attempt >= TELEGRAM_SEND_MAX_ATTEMPTS:
+                break
+            time_module.sleep(TELEGRAM_RETRY_SLEEP_SECONDS)
+    # Prevent duplicate spam after connectivity/auth failures; an in-app notification is still written.
+    finalize_notification_log_entry(
+        session,
+        log_id=log_row.id,
+        status="error",
+        error_message=str(last_error) if last_error is not None else "Telegram send failed.",
+    )
+    return False, True
 
 
 def _create_in_app_if_new(

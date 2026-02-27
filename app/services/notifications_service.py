@@ -33,6 +33,7 @@ class NotificationLogRowView:
     bucket_date: date
     dedup_key: str
     status: str
+    telegram_message_id: str | None
     error_message: str | None
     delivered_at: datetime | None
     created_at: datetime
@@ -112,6 +113,7 @@ def create_notification_log_entry(
     dedup_key: str,
     occurrence_id: int | None = None,
     status: str = "pending",
+    telegram_message_id: str | None = None,
 ) -> NotificationLog | None:
     row = NotificationLog(
         type=type,
@@ -120,6 +122,7 @@ def create_notification_log_entry(
         occurrence_id=occurrence_id,
         dedup_key=dedup_key,
         status=status,
+        telegram_message_id=(telegram_message_id or "").strip() or None,
         delivered_at=datetime.now() if status == "sent" else None,
     )
     session.add(row)
@@ -138,12 +141,14 @@ def finalize_notification_log_entry(
     log_id: int,
     status: str,
     error_message: str | None = None,
+    telegram_message_id: str | None = None,
 ) -> NotificationLog | None:
     row = session.get(NotificationLog, log_id)
     if row is None:
         return None
     row.status = status
     row.error_message = (error_message or "").strip() or None
+    row.telegram_message_id = (telegram_message_id or "").strip() or None
     row.delivered_at = datetime.now() if status == "sent" else None
     session.commit()
     session.refresh(row)
@@ -240,10 +245,15 @@ def list_notification_logs(
     limit: int = 50,
     offset: int = 0,
     filters: NotificationLogFilters | None = None,
+    sort: str = "newest",
 ) -> list[NotificationLogRowView]:
     stmt = _apply_notification_log_filters(select(NotificationLog), filters)
+    if sort == "oldest":
+        ordered = stmt.order_by(NotificationLog.created_at.asc(), NotificationLog.id.asc())
+    else:
+        ordered = stmt.order_by(NotificationLog.created_at.desc(), NotificationLog.id.desc())
     rows = session.scalars(
-        stmt.order_by(NotificationLog.created_at.desc(), NotificationLog.id.desc())
+        ordered
         .offset(max(offset, 0))
         .limit(limit)
     ).all()
@@ -255,6 +265,7 @@ def list_notification_logs(
             bucket_date=row.bucket_date,
             dedup_key=row.dedup_key,
             status=row.status,
+            telegram_message_id=row.telegram_message_id,
             error_message=row.error_message,
             delivered_at=row.delivered_at,
             created_at=row.created_at,

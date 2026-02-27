@@ -58,6 +58,22 @@ from app.services.settings_service import (
 
 api_router = APIRouter(tags=["api"])
 
+NOTIFICATION_SORT_VALUES = {"newest", "oldest", "unread_first"}
+NOTIFICATION_READ_STATE_VALUES = {"read", "unread"}
+NOTIFICATION_LOG_SORT_VALUES = {"newest", "oldest"}
+NOTIFICATION_LOG_CHANNEL_VALUES = {"in_app", "telegram"}
+NOTIFICATION_LOG_STATUS_VALUES = {"pending", "sent", "error"}
+HISTORY_SORT_VALUES = {"due_desc", "due_asc", "paid_desc"}
+
+
+def _require_enum(value: str | None, *, field: str, allowed: set[str]) -> str | None:
+    if value is None or value == "":
+        return None
+    if value not in allowed:
+        allowed_values = ", ".join(sorted(allowed))
+        raise HTTPException(status_code=400, detail=f"Invalid {field}. Allowed: {allowed_values}.")
+    return value
+
 
 class PaymentCreateRequest(BaseModel):
     name: str = Field(min_length=1, max_length=255)
@@ -208,6 +224,7 @@ def _serialize_notification_log_row(row) -> dict[str, object]:
         "bucket_date": row.bucket_date.isoformat(),
         "dedup_key": row.dedup_key,
         "status": row.status,
+        "telegram_message_id": row.telegram_message_id,
         "error_message": row.error_message,
         "delivered_at": None if row.delivered_at is None else row.delivered_at.isoformat(),
         "created_at": row.created_at.isoformat(),
@@ -406,18 +423,22 @@ def history_api(
     sort: str = Query(default="due_desc"),
     db: Session = Depends(get_db_session),
 ) -> dict[str, object]:
-    page_result = list_occurrence_history_page(
-        db,
-        filters=HistoryFilters(
-            status=(status or "").strip() or None,
-            start_date=start_date,
-            end_date=end_date,
-            q=(q or "").strip() or None,
-        ),
-        limit=per_page,
-        offset=(page - 1) * per_page,
-        sort=sort,
-    )
+    _require_enum(sort, field="sort", allowed=HISTORY_SORT_VALUES)
+    try:
+        page_result = list_occurrence_history_page(
+            db,
+            filters=HistoryFilters(
+                status=(status or "").strip() or None,
+                start_date=start_date,
+                end_date=end_date,
+                q=(q or "").strip() or None,
+            ),
+            limit=per_page,
+            offset=(page - 1) * per_page,
+            sort=sort,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {
         "items": [_serialize_history_row(row) for row in page_result.rows],
         "page": page,
@@ -442,23 +463,34 @@ def notification_logs_api(
     type: str | None = Query(default=None),
     channel: str | None = Query(default=None),
     status: str | None = Query(default=None),
+    sort: str = Query(default="newest"),
     start_date: date | None = Query(default=None),
     end_date: date | None = Query(default=None),
     db: Session = Depends(get_db_session),
 ) -> dict[str, object]:
+    validated_channel = _require_enum((channel or "").strip() or None, field="channel", allowed=NOTIFICATION_LOG_CHANNEL_VALUES)
+    validated_status = _require_enum((status or "").strip() or None, field="status", allowed=NOTIFICATION_LOG_STATUS_VALUES)
+    validated_sort = _require_enum(sort, field="sort", allowed=NOTIFICATION_LOG_SORT_VALUES) or "newest"
     filters = NotificationLogFilters(
         type=(type or "").strip() or None,
-        channel=(channel or "").strip() or None,
-        status=(status or "").strip() or None,
+        channel=validated_channel,
+        status=validated_status,
         start_date=start_date,
         end_date=end_date,
     )
     total = count_notification_logs_filtered(db, filters=filters)
-    items = list_notification_logs(db, limit=per_page, offset=(page - 1) * per_page, filters=filters)
+    items = list_notification_logs(
+        db,
+        limit=per_page,
+        offset=(page - 1) * per_page,
+        filters=filters,
+        sort=validated_sort,
+    )
     return {
         "items": [_serialize_notification_log_row(row) for row in items],
         "page": page,
         "per_page": per_page,
+        "sort": validated_sort,
         "total": total,
         "has_prev": page > 1,
         "has_next": ((page - 1) * per_page) + per_page < total,
@@ -483,9 +515,11 @@ def notifications_api(
     end_date: date | None = Query(default=None),
     db: Session = Depends(get_db_session),
 ) -> dict[str, object]:
+    validated_sort = _require_enum(sort, field="sort", allowed=NOTIFICATION_SORT_VALUES) or "newest"
+    validated_read_state = _require_enum((read_state or "").strip() or None, field="read_state", allowed=NOTIFICATION_READ_STATE_VALUES)
     filters = NotificationFilters(
         type=(type or "").strip() or None,
-        read_state=(read_state or "").strip() or None,
+        read_state=validated_read_state,
         start_date=start_date,
         end_date=end_date,
     )
@@ -494,14 +528,14 @@ def notifications_api(
         db,
         limit=per_page,
         offset=(page - 1) * per_page,
-        sort=sort,
+        sort=validated_sort,
         filters=filters,
     )
     return {
         "items": [_serialize_notification_row(row) for row in items],
         "page": page,
         "per_page": per_page,
-        "sort": sort,
+        "sort": validated_sort,
         "total": total,
         "has_prev": page > 1,
         "has_next": ((page - 1) * per_page) + per_page < total,

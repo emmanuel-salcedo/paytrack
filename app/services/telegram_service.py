@@ -6,7 +6,9 @@ from urllib import error, parse, request
 
 
 class TelegramDeliveryError(RuntimeError):
-    pass
+    def __init__(self, message: str, *, retryable: bool = False):
+        super().__init__(message)
+        self.retryable = retryable
 
 
 @dataclass(frozen=True)
@@ -48,15 +50,17 @@ def send_telegram_message(
             data = json.loads(response.read().decode("utf-8"))
     except error.HTTPError as exc:
         body = exc.read().decode("utf-8", errors="replace")
-        raise TelegramDeliveryError(f"Telegram API HTTP {exc.code}: {body}") from exc
+        retryable = exc.code == 429 or 500 <= exc.code <= 599
+        raise TelegramDeliveryError(f"Telegram API HTTP {exc.code}: {body}", retryable=retryable) from exc
     except error.URLError as exc:
-        raise TelegramDeliveryError(f"Telegram delivery failed: {exc.reason}") from exc
+        raise TelegramDeliveryError(f"Telegram delivery failed: {exc.reason}", retryable=True) from exc
     except json.JSONDecodeError as exc:
-        raise TelegramDeliveryError("Telegram API returned invalid JSON.") from exc
+        raise TelegramDeliveryError("Telegram API returned invalid JSON.", retryable=True) from exc
 
     if not bool(data.get("ok")):
         description = data.get("description") or "unknown Telegram API error"
-        raise TelegramDeliveryError(f"Telegram API rejected message: {description}")
+        retryable = "too many requests" in str(description).lower()
+        raise TelegramDeliveryError(f"Telegram API rejected message: {description}", retryable=retryable)
 
     result = data.get("result")
     message_id = result.get("message_id") if isinstance(result, dict) else None
